@@ -72,11 +72,6 @@ public final class YamlNodeOps {
                 .orElse(null);
     }
 
-    public static boolean getScalarBoolean(MappingNode map, String key, boolean def) {
-        String value = getScalarString(map, key);
-        return value != null ? Boolean.parseBoolean(value) : def;
-    }
-
     /** Every scalar entry of a sequence node, as strings - e.g. a YAML list of server ids. {@code null}-safe. */
     public static List<String> scalarStrings(SequenceNode sequence) {
         List<String> out = new ArrayList<>();

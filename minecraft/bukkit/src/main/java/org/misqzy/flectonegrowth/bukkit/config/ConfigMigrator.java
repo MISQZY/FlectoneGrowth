@@ -132,21 +132,23 @@ public final class ConfigMigrator {
         write(target, disk);
     }
 
-    /** Composes the bundled jar copy of {@code resourceName}, or {@code null} if it isn't actually bundled. */
+    /** Composes the bundled jar copy of {@code resourceName}, or {@code null} if it isn't actually bundled (or fails to read, logged as a warning - that shouldn't happen for a resource actually packaged in this jar). */
     private MappingNode readBundled(String resourceName) {
         try (InputStream in = plugin.getResource(resourceName)) {
             if (in == null) return null;
             return asMapping(composer.compose(new InputStreamReader(in, StandardCharsets.UTF_8)));
         } catch (IOException e) {
+            plugin.getLogger().warning("Failed to read bundled " + resourceName + " for migration: " + e.getMessage());
             return null;
         }
     }
 
-    /** Composes the on-disk copy of {@code file}, or {@code null} if it's empty/not a mapping. */
+    /** Composes the on-disk copy of {@code file}, or {@code null} if it's empty/not a mapping/unreadable (the latter logged as a warning, so a genuine I/O failure isn't indistinguishable from "nothing to migrate"). */
     private MappingNode readDisk(File file) {
         try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(file.toPath()), StandardCharsets.UTF_8)) {
             return asMapping(composer.compose(reader));
         } catch (IOException e) {
+            plugin.getLogger().warning("Failed to read " + file.getName() + " for migration: " + e.getMessage());
             return null;
         }
     }
