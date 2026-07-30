@@ -8,11 +8,14 @@ import org.incendo.cloud.annotations.CommandDescription;
 import org.incendo.cloud.annotations.Permission;
 import org.misqzy.flectonegrowth.bukkit.BukkitPlayerAdapter;
 import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages;
+import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages.Line;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.lang.TimeFormatter;
 import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.common.service.ScaleMath;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,49 +77,54 @@ public final class GrowthCommand {
     }
 
     private void showSummary(CommandSender sender, Player targetPlayer) {
-        sendHeader(sender, targetPlayer);
-        sendHeight(sender, targetPlayer);
-        sendGender(sender, targetPlayer);
+        List<Line> lines = new ArrayList<>();
+        addHeader(lines, targetPlayer);
+        addHeight(lines, targetPlayer);
+        addGender(lines, targetPlayer);
+        FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 
     private void showHeight(CommandSender sender, Player targetPlayer) {
-        sendHeader(sender, targetPlayer);
-        sendHeight(sender, targetPlayer);
+        List<Line> lines = new ArrayList<>();
+        addHeader(lines, targetPlayer);
+        addHeight(lines, targetPlayer);
+        FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 
     private void showGender(CommandSender sender, Player targetPlayer) {
-        sendHeader(sender, targetPlayer);
-        sendGender(sender, targetPlayer);
+        List<Line> lines = new ArrayList<>();
+        addHeader(lines, targetPlayer);
+        addGender(lines, targetPlayer);
+        FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 
-    private void sendHeader(CommandSender sender, Player targetPlayer) {
-        FlectoneGrowthMessages.send(core, sender, "growth-info.header", Map.of("player", targetPlayer.getName()));
+    private void addHeader(List<Line> lines, Player targetPlayer) {
+        lines.add(new Line("growth-info.header", Map.of("player", targetPlayer.getName())));
     }
 
-    private void sendGender(CommandSender sender, Player targetPlayer) {
+    private void addGender(List<Line> lines, Player targetPlayer) {
         BukkitPlayerAdapter target = new BukkitPlayerAdapter(targetPlayer);
-        FlectoneGrowthMessages.send(core, sender, "growth-info.gender", Map.of(
-                "gender", core.genderDisplayName(target)));
+        lines.add(new Line("growth-info.gender", Map.of("gender", core.genderDisplayName(target))));
     }
 
     /** Height value plus growth progress - progress is a height-growth metric, so it belongs with height, not the generic summary alone. */
-    private void sendHeight(CommandSender sender, Player targetPlayer) {
+    private void addHeight(List<Line> lines, Player targetPlayer) {
         GrowthEngine engine = core.growthEngine();
         BukkitPlayerAdapter target = new BukkitPlayerAdapter(targetPlayer);
 
         double current = engine.effectiveScale(target);
 
-        FlectoneGrowthMessages.send(core, sender, "growth-info.height", Map.of(
+        lines.add(new Line("growth-info.height", Map.of(
                 "value", ScaleMath.formatValue(current),
                 "unit", core.messages().heightUnit(),
-                "gender", core.genderDisplayName(target)));
+                "gender", core.genderDisplayName(target))));
 
         if (engine.isAtMaxGrowth(target)) {
-            FlectoneGrowthMessages.send(core, sender, "growth-info.max-reached");
+            lines.add(new Line("growth-info.max-reached"));
         } else {
             long remaining = engine.secondsUntilFullGrowth(target);
-            FlectoneGrowthMessages.send(core, sender, "growth-info.remaining", Map.of(
-                    "time", TimeFormatter.format(remaining, core.messages())));
+            lines.add(new Line("growth-info.remaining", Map.of(
+                    "time", TimeFormatter.format(remaining, core.messages()))));
         }
     }
 }

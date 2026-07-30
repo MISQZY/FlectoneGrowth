@@ -5,8 +5,10 @@ import org.incendo.cloud.annotations.Command;
 import org.incendo.cloud.annotations.CommandDescription;
 import org.incendo.cloud.annotations.Permission;
 import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages;
+import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages.Line;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -53,12 +55,14 @@ public final class HelpCommand {
     @CommandDescription("Lists every FlectoneGrowth command you can use.")
     @Permission("flectonegrowth.help")
     public void help(CommandSender sender) {
-        FlectoneGrowthMessages.send(core, sender, "help.header");
+        List<Line> lines = new ArrayList<>();
+        lines.add(new Line("help.header"));
         for (Entry entry : ENTRIES) {
             if (entry.permission() != null && !sender.hasPermission(entry.permission())) continue;
-            FlectoneGrowthMessages.send(core, sender, "help.entry", Map.of(
+            lines.add(new Line("help.entry", Map.of(
                     "syntax", entry.syntax(),
-                    "description", core.messages().raw(entry.descriptionKey())));
+                    "description", core.messages().raw(entry.descriptionKey()))));
         }
+        FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 }

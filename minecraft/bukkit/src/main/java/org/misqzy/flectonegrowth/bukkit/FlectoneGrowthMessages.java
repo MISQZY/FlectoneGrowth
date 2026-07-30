@@ -1,11 +1,14 @@
 package org.misqzy.flectonegrowth.bukkit;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.JoinConfiguration;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.misqzy.flectonegrowth.bukkit.integration.FlectonePulseMessageDispatcher;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.lang.Messages;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -53,6 +56,40 @@ public final class FlectoneGrowthMessages {
         }
 
         LegacyText.send(sender, messages.get(key, placeholders));
+    }
+
+    /** One localized line within a {@link #sendLines} call - a message key plus that line's own placeholders. */
+    public record Line(String key, Map<String, Object> placeholders) {
+        public Line(String key) {
+            this(key, Map.of());
+        }
+    }
+
+    /**
+     * Renders every one of {@code lines} and sends them as a single message
+     * with a line break between each, instead of one {@link #send} call per
+     * line - {@code /flectonegrowth help} and {@code /growth summary} used
+     * to arrive as several separate chat entries for what is conceptually
+     * one piece of output.
+     *
+     * <p>Always renders locally - deliberately does not attempt
+     * {@link FlectonePulseMessageDispatcher} routing, the same call
+     * {@link #send} makes per line. Combining several distinct message keys
+     * (each with their own placeholders) into one FlectonePulse dispatch
+     * call has no safe mapping onto its one-raw-string-plus-one-resolver-set
+     * API, and this is composite command/system output rather than a single
+     * chat message - the same reasoning {@code common.notify.Notifier}
+     * already applies to its own update notice.</p>
+     */
+    public static void sendLines(FlectoneGrowthCore core, CommandSender sender, List<Line> lines) {
+        if (lines.isEmpty()) return;
+        Messages messages = core.messages();
+        String locale = sender instanceof Player player ? clientLocale(messages, player) : null;
+
+        List<Component> rendered = lines.stream()
+                .map(line -> messages.get(locale, line.key(), line.placeholders()))
+                .toList();
+        LegacyText.send(sender, Component.join(JoinConfiguration.newlines(), rendered));
     }
 
     /** {@code player}'s client locale's language segment (e.g. {@code "ru_ru"} -> {@code "ru"}) if a matching translation file is loaded, else config.yml's configured default. */
