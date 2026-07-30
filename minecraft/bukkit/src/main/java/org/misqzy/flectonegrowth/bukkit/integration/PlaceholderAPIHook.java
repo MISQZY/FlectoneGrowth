@@ -13,6 +13,10 @@ import org.misqzy.flectonegrowth.bukkit.BuildVersion;
 import org.misqzy.flectonegrowth.bukkit.BukkitPlayerAdapter;
 
 import java.util.List;
+import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Exposes {@code %flectonegrowth_<placeholder>%} to other plugins. Swapped
@@ -67,25 +71,16 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
     }
 
     private String resolveOnline(GrowthEngine engine, BukkitPlayerAdapter target, String params) {
-        double current = engine.effectiveScale(target);
-
-        return switch (params.toLowerCase()) {
-            case "height" -> ScaleMath.formatValue(current);
-            case "height_full" -> ScaleMath.format(current, core.messages().heightUnit());
-            case "height_min" -> ScaleMath.formatValue(engine.minScale());
-            case "height_max" -> ScaleMath.formatValue(engine.maxScaleFor(target));
-            case "scale" -> ScaleMath.formatRaw(current);
-            case "scale_min" -> ScaleMath.formatRaw(engine.minScale());
-            case "scale_max" -> ScaleMath.formatRaw(engine.maxScaleFor(target));
-            case "gender" -> core.genderDisplayName(target);
-            case "growth_remaining_seconds" -> String.valueOf(engine.secondsUntilFullGrowth(target));
-            case "growth_remaining_formatted" -> TimeFormatter.format(engine.secondsUntilFullGrowth(target), core.messages());
-            case "growth_percentage" -> ScaleMath.formatPercentage(engine.growthProgress(target));
-            case "growth_max_reached" -> String.valueOf(engine.isAtMaxGrowth(target));
-            case "growth_active" -> String.valueOf(!engine.isAtMaxGrowth(target) && !engine.hasCustomScale(target));
-            case "has_custom_scale" -> String.valueOf(engine.hasCustomScale(target));
-            default -> null;
-        };
+        return resolve(params, new GrowthData(
+                () -> engine.effectiveScale(target),
+                engine::minScale,
+                () -> engine.maxScaleFor(target),
+                () -> core.genderDisplayName(target),
+                () -> engine.secondsUntilFullGrowth(target),
+                () -> engine.growthProgress(target),
+                () -> engine.isAtMaxGrowth(target),
+                () -> engine.hasCustomScale(target)
+        ));
     }
 
     /**
@@ -98,24 +93,56 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
      */
     private String resolveOffline(GrowthEngine engine, OfflinePlayer offlinePlayer, String params) {
         OfflineProfile profile = engine.loadOffline(offlinePlayer.getUniqueId());
-        double current = engine.effectiveScale(profile);
+        return resolve(params, new GrowthData(
+                () -> engine.effectiveScale(profile),
+                engine::minScale,
+                () -> engine.maxScaleFor(profile.gender()),
+                () -> core.genderDisplayName(profile.gender()),
+                () -> engine.secondsUntilFullGrowth(profile),
+                () -> engine.growthProgress(profile),
+                () -> engine.isAtMaxGrowth(profile),
+                profile::hasCustomScale
+        ));
+    }
 
+    /**
+     * The one placeholder-key-to-value mapping both {@link #resolveOnline}
+     * and {@link #resolveOffline} drive - previously typed out as two
+     * identical 14-case switches (one per data source), which meant a new
+     * placeholder had to be remembered in both places. Each {@link GrowthData}
+     * field stays lazy (a supplier, not a precomputed value) so a request for
+     * a single placeholder (PAPI's normal usage - one {@code onRequest} call
+     * per placeholder) still only evaluates the one figure it actually needs.
+     */
+    private String resolve(String params, GrowthData data) {
         return switch (params.toLowerCase()) {
-            case "height" -> ScaleMath.formatValue(current);
-            case "height_full" -> ScaleMath.format(current, core.messages().heightUnit());
-            case "height_min" -> ScaleMath.formatValue(engine.minScale());
-            case "height_max" -> ScaleMath.formatValue(engine.maxScaleFor(profile.gender()));
-            case "scale" -> ScaleMath.formatRaw(current);
-            case "scale_min" -> ScaleMath.formatRaw(engine.minScale());
-            case "scale_max" -> ScaleMath.formatRaw(engine.maxScaleFor(profile.gender()));
-            case "gender" -> core.genderDisplayName(profile.gender());
-            case "growth_remaining_seconds" -> String.valueOf(engine.secondsUntilFullGrowth(profile));
-            case "growth_remaining_formatted" -> TimeFormatter.format(engine.secondsUntilFullGrowth(profile), core.messages());
-            case "growth_percentage" -> ScaleMath.formatPercentage(engine.growthProgress(profile));
-            case "growth_max_reached" -> String.valueOf(engine.isAtMaxGrowth(profile));
-            case "growth_active" -> String.valueOf(!engine.isAtMaxGrowth(profile) && !profile.hasCustomScale());
-            case "has_custom_scale" -> String.valueOf(profile.hasCustomScale());
+            case "height" -> ScaleMath.formatValue(data.current().getAsDouble());
+            case "height_full" -> ScaleMath.format(data.current().getAsDouble(), core.messages().heightUnit());
+            case "height_min" -> ScaleMath.formatValue(data.min().getAsDouble());
+            case "height_max" -> ScaleMath.formatValue(data.max().getAsDouble());
+            case "scale" -> ScaleMath.formatRaw(data.current().getAsDouble());
+            case "scale_min" -> ScaleMath.formatRaw(data.min().getAsDouble());
+            case "scale_max" -> ScaleMath.formatRaw(data.max().getAsDouble());
+            case "gender" -> data.genderDisplayName().get();
+            case "growth_remaining_seconds" -> String.valueOf(data.secondsRemaining().getAsLong());
+            case "growth_remaining_formatted" -> TimeFormatter.format(data.secondsRemaining().getAsLong(), core.messages());
+            case "growth_percentage" -> ScaleMath.formatPercentage(data.progress().getAsDouble());
+            case "growth_max_reached" -> String.valueOf(data.atMax().getAsBoolean());
+            case "growth_active" -> String.valueOf(!data.atMax().getAsBoolean() && !data.hasCustomScale().getAsBoolean());
+            case "has_custom_scale" -> String.valueOf(data.hasCustomScale().getAsBoolean());
             default -> null;
         };
     }
+
+    /** Lazily-evaluated view over either a live {@link BukkitPlayerAdapter} or a one-shot {@link OfflineProfile} - see {@link #resolve}. */
+    private record GrowthData(
+            DoubleSupplier current,
+            DoubleSupplier min,
+            DoubleSupplier max,
+            Supplier<String> genderDisplayName,
+            LongSupplier secondsRemaining,
+            DoubleSupplier progress,
+            BooleanSupplier atMax,
+            BooleanSupplier hasCustomScale
+    ) {}
 }

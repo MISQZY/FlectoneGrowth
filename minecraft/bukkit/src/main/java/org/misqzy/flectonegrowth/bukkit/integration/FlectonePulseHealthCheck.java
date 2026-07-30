@@ -52,9 +52,6 @@ public final class FlectonePulseHealthCheck {
         // than duplicating its "not ready yet / module disabled" branching.
         FlectonePulseColorResolver.logDiagnostics(plugin, integrations);
 
-        boolean serverIdEnabled = integrations.getBoolean("flectonepulse.server-id", true);
-        boolean dispatchEnabled = integrations.getBoolean("flectonepulse.message-dispatch", true);
-
         FileFacade fileFacade = FlectonePulseAccess.tryGetFileFacade();
         if (fileFacade == null) {
             logger.warning("[FlectonePulse] Detected as enabled, but its API wasn't reachable just now (either "
@@ -63,26 +60,35 @@ public final class FlectonePulseHealthCheck {
             return;
         }
 
+        logServerIdStatus(logger, fileFacade, integrations.getBoolean("flectonepulse.server-id", true));
+        logDispatchStatus(logger, integrations.getBoolean("flectonepulse.message-dispatch", true));
+    }
+
+    private static void logServerIdStatus(Logger logger, FileFacade fileFacade, boolean serverIdEnabled) {
         if (!serverIdEnabled) {
             logger.info("[FlectonePulse] server-id reuse disabled via integrations.yml - using FlectoneGrowth's own.");
-        } else {
-            String serverId = fileFacade.config().server();
-            logger.info("[FlectonePulse] server-id reuse " + (serverId == null || serverId.isBlank()
-                    ? "inactive (FlectonePulse's own `server` config key is blank) - using FlectoneGrowth's own."
-                    : "active (using \"" + serverId + "\")."));
+            return;
         }
 
+        String serverId = fileFacade.config().server();
+        logger.info("[FlectonePulse] server-id reuse " + (serverId == null || serverId.isBlank()
+                ? "inactive (FlectonePulse's own `server` config key is blank) - using FlectoneGrowth's own."
+                : "active (using \"" + serverId + "\")."));
+    }
+
+    private static void logDispatchStatus(Logger logger, boolean dispatchEnabled) {
         if (!dispatchEnabled) {
             logger.info("[FlectonePulse] message dispatch integration disabled via integrations.yml - "
                     + "messages will use local rendering only.");
-        } else {
-            boolean dispatchReady = FlectonePulseAccess.tryGet(FPlayerService.class) != null
-                    && FlectonePulseAccess.tryGet(MessagePipeline.class) != null
-                    && FlectonePulseAccess.tryGet(MessageDispatcher.class) != null;
-            logger.info("[FlectonePulse] message dispatch integration " + (dispatchReady
-                    ? "active - outgoing player messages try FlectonePulse's own pipeline first."
-                    : "unavailable right now (FPlayerService/MessagePipeline/MessageDispatcher not reachable) - "
-                            + "messages will use local rendering only, until it is."));
+            return;
         }
+
+        boolean dispatchReady = FlectonePulseAccess.tryGet(FPlayerService.class) != null
+                && FlectonePulseAccess.tryGet(MessagePipeline.class) != null
+                && FlectonePulseAccess.tryGet(MessageDispatcher.class) != null;
+        logger.info("[FlectonePulse] message dispatch integration " + (dispatchReady
+                ? "active - outgoing player messages try FlectonePulse's own pipeline first."
+                : "unavailable right now (FPlayerService/MessagePipeline/MessageDispatcher not reachable) - "
+                        + "messages will use local rendering only, until it is."));
     }
 }
