@@ -10,6 +10,7 @@ import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 
 /**
@@ -26,18 +27,13 @@ import org.slf4j.Logger;
         authors = {"MISQZY"},
         description = "Relays FlectoneGrowth cross-server cache-invalidation messages between backend servers."
 )
+@RequiredArgsConstructor(onConstructor_ = @Inject)
 public final class FlectoneGrowthVelocityPlugin {
 
     private static final ChannelIdentifier CHANNEL = MinecraftChannelIdentifier.from("flectonegrowth:sync");
 
     private final ProxyServer server;
     private final Logger logger;
-
-    @Inject
-    public FlectoneGrowthVelocityPlugin(ProxyServer server, Logger logger) {
-        this.server = server;
-        this.logger = logger;
-    }
 
     @Subscribe
     public void onProxyInitialize(ProxyInitializeEvent event) {

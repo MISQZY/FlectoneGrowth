@@ -1,5 +1,7 @@
 package org.misqzy.flectonegrowth.common.notify;
 
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.platform.PlatformPlayer;
 
@@ -29,13 +31,10 @@ import java.util.Map;
  * a config toggle flipped via {@code /flectonegrowth reload} takes effect on
  * the very next notification, no restart needed.</p>
  */
+@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class Notifier {
 
     protected final FlectoneGrowthCore core;
-
-    protected Notifier(FlectoneGrowthCore core) {
-        this.core = core;
-    }
 
     /** Permission node a player must hold to receive this notifier's messages. */
     protected abstract String permission();

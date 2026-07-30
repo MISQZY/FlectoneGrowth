@@ -3,6 +3,7 @@ package org.misqzy.flectonegrowth.common.di;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import lombok.RequiredArgsConstructor;
 import org.misqzy.flectonegrowth.common.network.NetworkMessenger;
 import org.misqzy.flectonegrowth.common.platform.Platform;
 import org.misqzy.flectonegrowth.common.platform.PlayerLookup;
@@ -25,17 +26,12 @@ import org.misqzy.flectonegrowth.common.storage.Storage;
  * are hot-swapped as a unit on {@code /flectonegrowth reload} - Guice's providers would
  * make that swap harder to reason about than a small owning facade class.</p>
  */
+@RequiredArgsConstructor
 public final class CoreModule extends AbstractModule {
 
     private final CoreConfig config;
     private final Storage storage;
     private final GenderRegistry genderRegistry;
-
-    public CoreModule(CoreConfig config, Storage storage, GenderRegistry genderRegistry) {
-        this.config = config;
-        this.storage = storage;
-        this.genderRegistry = genderRegistry;
-    }
 
     @Override
     protected void configure() {

@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.common.service;
 
+import lombok.RequiredArgsConstructor;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.config.CoreConfig;
 import org.misqzy.flectonegrowth.common.domain.PlayerProfile;
@@ -16,17 +17,13 @@ import java.util.UUID;
  * <p><b>Storage calls in here are blocking</b> - call only from an async
  * thread (see {@link Scheduler#runAsync}).</p>
  */
+@RequiredArgsConstructor
 public final class GrowthTimeAssigner {
 
     private static final Random RANDOM = new Random();
 
     private final CoreConfig config;
     private final Storage storage;
-
-    public GrowthTimeAssigner(CoreConfig config, Storage storage) {
-        this.config = config;
-        this.storage = storage;
-    }
 
     /** Loads (or assigns + persists) the target growth time into {@code profile}. Blocking - call off-thread. */
     public void loadInto(PlayerProfile profile) {

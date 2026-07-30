@@ -1,5 +1,10 @@
 package org.misqzy.flectonegrowth.common.network;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 import java.util.UUID;
 
 /**
@@ -9,6 +14,9 @@ import java.util.UUID;
  * this player's state now" instead of waiting for their next natural
  * read - it is a latency optimisation, not a replacement for the DB.
  */
+@Getter
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class SyncMessage {
 
     public enum Type { SCALE_SET, SCALE_REMOVED, GENDER_SET }
@@ -18,14 +26,6 @@ public final class SyncMessage {
     private final String stringValue;
     private final double doubleValue;
     private final String sourceServerId;
-
-    private SyncMessage(Type type, UUID playerUuid, String stringValue, double doubleValue, String sourceServerId) {
-        this.type = type;
-        this.playerUuid = playerUuid;
-        this.stringValue = stringValue;
-        this.doubleValue = doubleValue;
-        this.sourceServerId = sourceServerId;
-    }
 
     public static SyncMessage scaleSet(UUID uuid, double scale, String sourceServerId) {
         return new SyncMessage(Type.SCALE_SET, uuid, null, scale, sourceServerId);
@@ -42,10 +42,4 @@ public final class SyncMessage {
     static SyncMessage raw(Type type, UUID uuid, String stringValue, double doubleValue, String sourceServerId) {
         return new SyncMessage(type, uuid, stringValue, doubleValue, sourceServerId);
     }
-
-    public Type type() { return type; }
-    public UUID playerUuid() { return playerUuid; }
-    public String stringValue() { return stringValue; }
-    public double doubleValue() { return doubleValue; }
-    public String sourceServerId() { return sourceServerId; }
 }

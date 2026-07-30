@@ -1,5 +1,8 @@
 package org.misqzy.flectonegrowth.common.domain;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -8,26 +11,51 @@ import java.util.concurrent.atomic.AtomicReference;
  * customScales / genderCache / growthTimeCache maps the original plugin
  * kept in three unrelated classes - one profile per player is easier to
  * reason about and to invalidate on cross-server sync.
+ *
+ * <p>Getters are Lombok-generated ({@link Getter} + fluent {@link Accessors})
+ * except {@link #customScale()} (unwraps the backing {@link AtomicReference},
+ * not a raw field return). Setters stay hand-written: this class's existing
+ * convention is bare-name fluent getters paired with {@code set}-prefixed
+ * setters, a mix {@code @Accessors(fluent = true)} can't reproduce (it
+ * renames both symmetrically). The constructor also stays hand-written -
+ * only 2 of the 7 fields are constructor parameters, the rest keep their own
+ * field-initializer defaults, which neither {@code @RequiredArgsConstructor}
+ * nor {@code @AllArgsConstructor} can express.</p>
  */
 public final class PlayerProfile {
 
+    @Getter
+    @Accessors(fluent = true)
     private final UUID uuid;
     private final AtomicReference<Double> customScale = new AtomicReference<>(null);
+    @Getter
+    @Accessors(fluent = true)
     private volatile Gender gender;
+    /** -1 means "not yet assigned/loaded". */
+    @Getter
+    @Accessors(fluent = true)
     private volatile long targetGrowthSeconds = -1;
 
+    /** Accumulated played seconds as of {@link #lastCheckpointSeconds()} - excludes time elapsed since then. */
+    @Getter
+    @Accessors(fluent = true)
     private volatile long totalPlayedSeconds = 0;
+    /** Epoch second of the last persisted checkpoint (join or quit). {@code -1} means "not yet loaded". */
+    @Getter
+    @Accessors(fluent = true)
     private volatile long lastCheckpointSeconds = -1;
+    /** Epoch second of this player's first-ever join. {@code -1} means "not yet loaded". */
+    @Getter
+    @Accessors(fluent = true)
     private volatile long firstJoinSeconds = -1;
+    /** Number of times this player has joined. */
+    @Getter
+    @Accessors(fluent = true)
     private volatile int sessions = 0;
 
     public PlayerProfile(UUID uuid, Gender initialGender) {
         this.uuid = uuid;
         this.gender = initialGender;
-    }
-
-    public UUID uuid() {
-        return uuid;
     }
 
     public Double customScale() {
@@ -42,41 +70,12 @@ public final class PlayerProfile {
         return customScale.get() != null;
     }
 
-    public Gender gender() {
-        return gender;
-    }
-
     public void setGender(Gender gender) {
         this.gender = gender;
     }
 
-    /** -1 means "not yet assigned/loaded". */
-    public long targetGrowthSeconds() {
-        return targetGrowthSeconds;
-    }
-
     public void setTargetGrowthSeconds(long seconds) {
         this.targetGrowthSeconds = seconds;
-    }
-
-    /** Accumulated played seconds as of {@link #lastCheckpointSeconds()} - excludes time elapsed since then. */
-    public long totalPlayedSeconds() {
-        return totalPlayedSeconds;
-    }
-
-    /** Epoch second of the last persisted checkpoint (join or quit). {@code -1} means "not yet loaded". */
-    public long lastCheckpointSeconds() {
-        return lastCheckpointSeconds;
-    }
-
-    /** Epoch second of this player's first-ever join. {@code -1} means "not yet loaded". */
-    public long firstJoinSeconds() {
-        return firstJoinSeconds;
-    }
-
-    /** Number of times this player has joined. */
-    public int sessions() {
-        return sessions;
     }
 
     /** Hydrates the playtime fields from a freshly loaded/upserted {@link PlayTime} row. */

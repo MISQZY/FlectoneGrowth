@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.listener;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -20,17 +21,12 @@ import java.util.UUID;
  * respawn hook the original plugin did not have (see
  * {@code docs/ARCHITECTURE.md} "Bugs fixed" #5).
  */
+@RequiredArgsConstructor
 public final class PlayerConnectionListener implements Listener {
 
     private final JavaPlugin plugin;
     private final GrowthEngine growthEngine;
     private final UpdateNotifier updateNotifier;
-
-    public PlayerConnectionListener(JavaPlugin plugin, GrowthEngine growthEngine, UpdateNotifier updateNotifier) {
-        this.plugin = plugin;
-        this.growthEngine = growthEngine;
-        this.updateNotifier = updateNotifier;
-    }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {

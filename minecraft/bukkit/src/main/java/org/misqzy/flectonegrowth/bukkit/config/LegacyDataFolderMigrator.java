@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.config;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -22,15 +23,12 @@ import java.util.logging.Logger;
  * because it's a genuinely fresh install that happens to share a
  * {@code plugins/} folder with an unrelated leftover directory.</p>
  */
+@RequiredArgsConstructor
 public final class LegacyDataFolderMigrator {
 
     private static final String LEGACY_FOLDER_NAME = "PlayerGrowth";
 
     private final JavaPlugin plugin;
-
-    public LegacyDataFolderMigrator(JavaPlugin plugin) {
-        this.plugin = plugin;
-    }
 
     public void migrateIfNeeded() {
         File dataFolder = plugin.getDataFolder();

@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.config;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -10,6 +11,7 @@ import java.io.File;
  * rather than calling {@link JavaPlugin#saveResource} unconditionally,
  * which would otherwise require callers to remember the "replace" flag.
  */
+@RequiredArgsConstructor
 public final class ResourceInstaller {
 
     private static final String[] RESOURCES = {
@@ -21,10 +23,6 @@ public final class ResourceInstaller {
     };
 
     private final JavaPlugin plugin;
-
-    public ResourceInstaller(JavaPlugin plugin) {
-        this.plugin = plugin;
-    }
 
     public void installDefaults() {
         for (String resource : RESOURCES) {

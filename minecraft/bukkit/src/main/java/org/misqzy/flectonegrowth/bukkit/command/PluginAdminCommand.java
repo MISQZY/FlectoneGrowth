@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.command;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.annotations.Command;
 import org.incendo.cloud.annotations.CommandDescription;
@@ -11,13 +12,10 @@ import org.misqzy.flectonegrowth.common.lang.TimeFormatter;
 import java.util.Map;
 
 /** Administrative commands - currently just {@code /flectonegrowth reload}. */
+@RequiredArgsConstructor
 public final class PluginAdminCommand {
 
     private final FlectoneGrowthPlugin plugin;
-
-    public PluginAdminCommand(FlectoneGrowthPlugin plugin) {
-        this.plugin = plugin;
-    }
 
     @Command("flectonegrowth|pg reload")
     @CommandDescription("Reload the FlectoneGrowth configuration.")

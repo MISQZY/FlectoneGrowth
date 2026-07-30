@@ -1,5 +1,7 @@
 package org.misqzy.flectonegrowth.common.config;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
 import org.misqzy.flectonegrowth.common.storage.StorageType;
 
 /**
@@ -7,9 +9,17 @@ import org.misqzy.flectonegrowth.common.storage.StorageType;
  * A fresh instance is built on every reload; nothing here mutates in place,
  * which removes the "half old / half new config" hazard the original
  * {@code PluginConfig} had when individual fields were re-assigned.
+ *
+ * <p>The constructor's config-parsing logic (defaults, the derived
+ * {@code storageType} fallback) is hand-written and stays that way - only
+ * the getters below are Lombok-generated ({@link Getter} + fluent
+ * {@link Accessors}, matching every field's existing bare-name accessor).</p>
  */
+@Getter
+@Accessors(fluent = true)
 public final class CoreConfig {
 
+    /** The plugin build that generated this config.yml - kept in sync on every startup by ConfigMigrator, so this is always the currently-running build's version, not a stale snapshot. */
     private final String version;
     private final double minScale;
     private final double maxScale;
@@ -39,7 +49,9 @@ public final class CoreConfig {
     private final long maxLifetimeMs;
 
     private final boolean networkSyncEnabled;
+    /** Whether playtime is tracked in a bucket scoped to this running server (keyed by its own {@code server} id) rather than one shared network-wide total. Only consulted when {@link #networkSyncEnabled()} is on. */
     private final boolean networkPerServer;
+    /** Whether time spent on this running server counts towards growth playtime at all - false for a hub/lobby server players idle on between real servers. A per-server setting (this server's own choice), not a network-wide list. Only consulted when {@link #networkSyncEnabled()} is on. */
     private final boolean networkIncludeServer;
 
     private final boolean updateCheckerEnabled;
@@ -105,49 +117,9 @@ public final class CoreConfig {
         this.updateCheckerEnabled = cfg.getBoolean("update-checker.enabled", true);
     }
 
-    /** The plugin build that generated this config.yml - kept in sync on every startup by ConfigMigrator, so this is always the currently-running build's version, not a stale snapshot. */
-    public String version() { return version; }
-
-    public double minScale() { return minScale; }
-    public double maxScale() { return maxScale; }
-    public String locale() { return locale; }
-    public String primaryColor() { return primaryColor; }
-    public String secondaryColor() { return secondaryColor; }
-
     public boolean isRangeMode() {
         return growTimeMinSeconds > 0 && growTimeMaxSeconds > growTimeMinSeconds;
     }
-
-    public long growTimeSeconds() { return growTimeSeconds; }
-    public long growTimeMinSeconds() { return growTimeMinSeconds; }
-    public long growTimeMaxSeconds() { return growTimeMaxSeconds; }
-    public boolean autoGrowth() { return autoGrowth; }
-    public double growthUpdateIntervalSeconds() { return growthUpdateIntervalSeconds; }
-    public boolean pauseWhenBoxedIn() { return pauseWhenBoxedIn; }
-
-    public StorageType storageType() { return storageType; }
-    public String dbHost() { return dbHost; }
-    public int dbPort() { return dbPort; }
-    public String dbName() { return dbName; }
-    public String dbUsername() { return dbUsername; }
-    public String dbPassword() { return dbPassword; }
-    public String dbTablePrefix() { return dbTablePrefix; }
-    public String dbParams() { return dbParams; }
-    public int maxPoolSize() { return maxPoolSize; }
-    public int minIdle() { return minIdle; }
-    public long connectionTimeoutMs() { return connectionTimeoutMs; }
-    public long idleTimeoutMs() { return idleTimeoutMs; }
-    public long maxLifetimeMs() { return maxLifetimeMs; }
-
-    public boolean networkSyncEnabled() { return networkSyncEnabled; }
-
-    /** Whether playtime is tracked in a bucket scoped to this running server (keyed by its own {@code server} id) rather than one shared network-wide total. Only consulted when {@link #networkSyncEnabled()} is on. */
-    public boolean networkPerServer() { return networkPerServer; }
-
-    /** Whether time spent on this running server counts towards growth playtime at all - false for a hub/lobby server players idle on between real servers. A per-server setting (this server's own choice), not a network-wide list. Only consulted when {@link #networkSyncEnabled()} is on. */
-    public boolean networkIncludeServer() { return networkIncludeServer; }
-
-    public boolean updateCheckerEnabled() { return updateCheckerEnabled; }
 
     // network.server is deliberately not parsed here: the actual identifier
     // (Platform#serverId()) needs to auto-generate and persist a UUID back

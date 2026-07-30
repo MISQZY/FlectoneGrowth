@@ -1,5 +1,7 @@
 package org.misqzy.flectonegrowth.bukkit;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.ServicePriority;
@@ -36,6 +38,8 @@ import java.util.function.LongConsumer;
 
 public final class FlectoneGrowthPlugin extends JavaPlugin {
 
+    @Getter
+    @Accessors(fluent = true)
     private FlectoneGrowthCore core;
     private Scheduler scheduler;
     private GrowthTicker ticker;
@@ -128,10 +132,6 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
                 if (onComplete != null) onComplete.accept(System.currentTimeMillis() - startedAt);
             });
         });
-    }
-
-    public FlectoneGrowthCore core() {
-        return core;
     }
 
     private FlectoneGrowthCore bootstrapCore() {

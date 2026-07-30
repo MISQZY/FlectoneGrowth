@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.network;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -19,14 +20,11 @@ import java.util.function.Consumer;
  * on the message at that instant either, so it is silently dropped rather
  * than queued for later.
  */
+@RequiredArgsConstructor
 public final class BukkitNetworkMessenger implements NetworkMessenger, PluginMessageListener {
 
     private final JavaPlugin plugin;
     private volatile Consumer<SyncMessage> handler;
-
-    public BukkitNetworkMessenger(JavaPlugin plugin) {
-        this.plugin = plugin;
-    }
 
     public void register() {
         plugin.getServer().getMessenger().registerOutgoingPluginChannel(plugin, SyncMessageCodec.CHANNEL);

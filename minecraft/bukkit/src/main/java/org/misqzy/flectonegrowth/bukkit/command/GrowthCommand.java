@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.command;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.annotations.Argument;
@@ -26,13 +27,10 @@ import java.util.Map;
  * permissions across all three - they're all "view growth info", just
  * scoped differently, not separate capabilities.
  */
+@RequiredArgsConstructor
 public final class GrowthCommand {
 
     private final FlectoneGrowthCore core;
-
-    public GrowthCommand(FlectoneGrowthCore core) {
-        this.core = core;
-    }
 
     @Command("growth summary")
     @CommandDescription("View your own growth summary.")

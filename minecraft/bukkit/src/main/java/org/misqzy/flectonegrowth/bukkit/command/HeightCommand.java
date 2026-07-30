@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.command;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.annotations.Argument;
@@ -25,13 +26,10 @@ import java.util.Map;
  * {@code height} as siblings (this threw {@code AmbiguousNodeException} at
  * plugin enable on a real server - not something a local compile catches).</p>
  */
+@RequiredArgsConstructor
 public final class HeightCommand {
 
     private final FlectoneGrowthCore core;
-
-    public HeightCommand(FlectoneGrowthCore core) {
-        this.core = core;
-    }
 
     @Command("height <meters>")
     @CommandDescription("Set your own height, in meters.")

@@ -4,6 +4,8 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Module;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 import org.misqzy.flectonegrowth.common.platform.PlayerLookup;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.config.ConfigBundle;
@@ -31,14 +33,26 @@ import java.util.logging.Logger;
 public final class FlectoneGrowthCore {
 
     private final Platform platform;
+    @Getter
+    @Accessors(fluent = true)
     private Injector injector;
     // volatile: reload() now runs its blocking file/DB I/O off the main
     // thread (see FlectoneGrowthPlugin#reload) and swaps these in from there,
     // while commands/PAPI/etc. keep reading them on the main thread.
+    @Getter
+    @Accessors(fluent = true)
     private volatile CoreConfig config;
+    @Getter
+    @Accessors(fluent = true)
     private volatile IntegrationsConfig integrations;
+    @Getter
+    @Accessors(fluent = true)
     private volatile Storage storage;
+    @Getter
+    @Accessors(fluent = true)
     private volatile GenderRegistry genderRegistry;
+    @Getter
+    @Accessors(fluent = true)
     private volatile Messages messages;
 
     private FlectoneGrowthCore(Platform platform) {
@@ -131,22 +145,6 @@ public final class FlectoneGrowthCore {
         return injector.getInstance(GrowthEngine.class);
     }
 
-    public Messages messages() {
-        return messages;
-    }
-
-    public CoreConfig config() {
-        return config;
-    }
-
-    public IntegrationsConfig integrations() {
-        return integrations;
-    }
-
-    public GenderRegistry genderRegistry() {
-        return genderRegistry;
-    }
-
     /** {@code gender}'s configured display name (falls back to its key if none is configured) - the composition every caller needs {@link GenderRegistry#resolveDisplayName} for, in one place instead of each re-wiring {@code messages()::rawOrNull} into it. */
     public String genderDisplayName(Gender gender) {
         return genderRegistry.resolveDisplayName(gender, messages::rawOrNull);
@@ -155,13 +153,5 @@ public final class FlectoneGrowthCore {
     /** {@code player}'s *current* gender's display name - see {@link #genderDisplayName(Gender)}. */
     public String genderDisplayName(PlatformPlayer player) {
         return genderDisplayName(growthEngine().genderOf(player));
-    }
-
-    public Storage storage() {
-        return storage;
-    }
-
-    public Injector injector() {
-        return injector;
     }
 }

@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit;
 
+import lombok.RequiredArgsConstructor;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -19,13 +20,13 @@ import java.util.UUID;
  * over the live Bukkit object - caching it would risk holding a stale
  * reference across a respawn/teleport.
  */
+@RequiredArgsConstructor
 public final class BukkitPlayerAdapter implements PlatformPlayer {
 
+    // Not @Getter - the public accessor is intentionally named bukkit(), not
+    // player(), so it stays hand-written rather than fighting Lombok's
+    // fluent-accessor-name-matches-field-name convention.
     private final Player player;
-
-    public BukkitPlayerAdapter(Player player) {
-        this.player = player;
-    }
 
     public Player bukkit() {
         return player;

@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.command;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.annotations.Argument;
@@ -24,13 +25,10 @@ import java.util.Map;
  * {@code type} (String) argument can't both sit directly under
  * {@code gender} as sibling argument nodes.</p>
  */
+@RequiredArgsConstructor
 public final class GenderCommand {
 
     private final FlectoneGrowthCore core;
-
-    public GenderCommand(FlectoneGrowthCore core) {
-        this.core = core;
-    }
 
     @Command("gender <type>")
     @CommandDescription("Set your own gender.")

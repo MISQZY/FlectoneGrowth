@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -14,13 +15,10 @@ import org.misqzy.flectonegrowth.common.platform.Scheduler;
  * work, which would need per-entity region-scheduler calls instead - see
  * {@code docs/ARCHITECTURE.md}'s "Known, accepted limitations".
  */
+@RequiredArgsConstructor
 public final class BukkitScheduler implements Scheduler {
 
     private final JavaPlugin plugin;
-
-    public BukkitScheduler(JavaPlugin plugin) {
-        this.plugin = plugin;
-    }
 
     @Override
     public void runAsync(Runnable task) {

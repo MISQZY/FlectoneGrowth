@@ -1,5 +1,8 @@
 package org.misqzy.flectonegrowth.bukkit;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.Accessors;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.misqzy.flectonegrowth.common.platform.Platform;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
@@ -7,26 +10,19 @@ import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import java.io.File;
 import java.util.logging.Logger;
 
+@RequiredArgsConstructor
+@Accessors(fluent = true)
 public final class BukkitPlatform implements Platform {
 
     private final JavaPlugin plugin;
+    @Getter
     private final Scheduler scheduler;
+    @Getter
     private final String serverId;
-
-    public BukkitPlatform(JavaPlugin plugin, Scheduler scheduler, String serverId) {
-        this.plugin = plugin;
-        this.scheduler = scheduler;
-        this.serverId = serverId;
-    }
 
     @Override
     public String name() {
         return "Bukkit";
-    }
-
-    @Override
-    public String serverId() {
-        return serverId;
     }
 
     @Override
@@ -37,10 +33,5 @@ public final class BukkitPlatform implements Platform {
     @Override
     public Logger logger() {
         return plugin.getLogger();
-    }
-
-    @Override
-    public Scheduler scheduler() {
-        return scheduler;
     }
 }

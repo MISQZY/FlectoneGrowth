@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.integration;
 
+import lombok.RequiredArgsConstructor;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -28,6 +29,7 @@ import java.util.function.Supplier;
  * {@code /papi info flectonegrowth} documents them instead of showing an
  * empty "Placeholders" section.</p>
  */
+@RequiredArgsConstructor
 public final class PlaceholderAPIHook extends PlaceholderExpansion {
 
     private static final List<String> PLACEHOLDERS = List.of(
@@ -48,10 +50,6 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
     );
 
     private final FlectoneGrowthCore core;
-
-    public PlaceholderAPIHook(FlectoneGrowthCore core) {
-        this.core = core;
-    }
 
     @Override public @NotNull String getIdentifier() { return "flectonegrowth"; }
     @Override public @NotNull String getName() { return "FlectoneGrowth"; }

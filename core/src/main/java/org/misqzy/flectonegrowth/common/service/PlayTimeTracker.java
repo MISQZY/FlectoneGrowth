@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.common.service;
 
+import lombok.RequiredArgsConstructor;
 import org.misqzy.flectonegrowth.common.domain.PlayTime;
 import org.misqzy.flectonegrowth.common.domain.PlayerProfile;
 import org.misqzy.flectonegrowth.common.storage.Storage;
@@ -16,13 +17,10 @@ import java.util.UUID;
  * <p><b>Storage calls in here are blocking</b> - call only from an async
  * thread, same contract as {@link GrowthTimeAssigner}.</p>
  */
+@RequiredArgsConstructor
 public final class PlayTimeTracker {
 
     private final Storage storage;
-
-    public PlayTimeTracker(Storage storage) {
-        this.storage = storage;
-    }
 
     /** Pure read - hydrates {@code profile} from whatever's already persisted under {@code server}, without touching sessions/last. Safe to call any time, e.g. a reload-refresh of an already-online player. */
     public void loadInto(PlayerProfile profile, String server) {

@@ -2,6 +2,8 @@ package org.misqzy.flectonegrowth.common.service;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.config.CoreConfig;
@@ -42,6 +44,8 @@ public final class GrowthEngine {
 
     private volatile CoreConfig config;
     private volatile Storage storage;
+    @Getter
+    @Accessors(fluent = true)
     private volatile GenderRegistry genderRegistry;
     private volatile GrowthTimeAssigner timeAssigner;
     private volatile PlayTimeTracker playTimeTracker;
@@ -210,10 +214,6 @@ public final class GrowthEngine {
     public Gender genderOf(PlatformPlayer player) {
         PlayerProfile profile = profiles.get(player.uuid());
         return profile != null ? profile.gender() : genderRegistry.getDefault();
-    }
-
-    public GenderRegistry genderRegistry() {
-        return genderRegistry;
     }
 
     /**

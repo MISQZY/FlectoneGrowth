@@ -32,6 +32,15 @@ subprojects {
         toolchain.languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("javaVersion").get().toInt()))
     }
 
+    // Centralized here rather than per-module: every module with hand-written
+    // Java source (core, minecraft/bukkit, minecraft/velocity) benefits from
+    // the same boilerplate reduction, and a single version avoids the three
+    // modules drifting out of sync with each other.
+    dependencies {
+        "compileOnly"("org.projectlombok:lombok:${rootProject.findProperty("lombokVersion")}")
+        "annotationProcessor"("org.projectlombok:lombok:${rootProject.findProperty("lombokVersion")}")
+    }
+
     tasks.withType<JavaCompile> {
         options.encoding = "UTF-8"
         options.release.set(providers.gradleProperty("javaVersion").get().toInt())

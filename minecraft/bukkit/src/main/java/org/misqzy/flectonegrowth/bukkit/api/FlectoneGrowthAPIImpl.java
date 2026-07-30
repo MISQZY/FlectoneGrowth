@@ -1,5 +1,6 @@
 package org.misqzy.flectonegrowth.bukkit.api;
 
+import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.misqzy.flectonegrowth.bukkit.BukkitPlayerAdapter;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
@@ -16,13 +17,10 @@ import java.util.function.BiFunction;
  * different package) can construct and register it - other plugins should
  * only ever reference it through the {@link FlectoneGrowthAPI} interface.
  */
+@RequiredArgsConstructor
 public final class FlectoneGrowthAPIImpl implements FlectoneGrowthAPI {
 
     private final FlectoneGrowthCore core;
-
-    public FlectoneGrowthAPIImpl(FlectoneGrowthCore core) {
-        this.core = core;
-    }
 
     @Override
     public Optional<Double> getHeight(Player player) {
