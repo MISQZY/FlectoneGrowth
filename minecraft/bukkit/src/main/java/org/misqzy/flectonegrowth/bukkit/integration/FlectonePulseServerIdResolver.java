@@ -1,13 +1,8 @@
 package org.misqzy.flectonegrowth.bukkit.integration;
 
 import net.flectone.pulse.util.file.FileFacade;
-import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.misqzy.flectonegrowth.bukkit.config.YamlFileLoader;
 import org.misqzy.flectonegrowth.common.config.ConfigView;
-
-import java.io.File;
 
 /**
  * If FlectonePulse is installed and enabled, its own config carries a
@@ -26,22 +21,22 @@ import java.io.File;
  * whatever free-form value the admin put in FlectonePulse's config, so it's
  * treated as an opaque string here too.</p>
  *
- * <p>Prefers reading it through {@link FlectonePulseAccess} (FlectonePulse's
- * own live, parsed config, via its Java API) over reading its config.yml
- * directly off disk - the API path can't drift out of sync with an
- * in-memory {@code /flectonepulse reload}, and doesn't need this class to
- * re-implement FlectonePulse's own YAML parsing. The file read is kept as a
- * fallback for FlectonePulse versions that predate this API.</p>
+ * <p>Read through {@link FlectonePulseAccess} (FlectonePulse's own live,
+ * parsed config, via its Java API) rather than reading its config.yml off
+ * disk - the API path can't drift out of sync with an in-memory
+ * {@code /flectonepulse reload}, and doesn't need this class to re-implement
+ * FlectonePulse's own YAML parsing. No disk-read fallback: an install
+ * running a FlectonePulse version old enough to predate this API method
+ * simply falls back to {@code fallback}, same as FlectonePulse not being
+ * installed at all.</p>
  */
 public final class FlectonePulseServerIdResolver {
-
-    private static final String PLUGIN_NAME = "FlectonePulse";
 
     private FlectonePulseServerIdResolver() {}
 
     /**
      * Returns FlectonePulse's configured server id, or {@code fallback} if
-     * FlectonePulse isn't present/configured, or if {@code integrations}
+     * FlectonePulse isn't present/ready/configured, or if {@code integrations}
      * has {@code flectonepulse.enabled}/{@code flectonepulse.server-id} set
      * to {@code false}.
      */
@@ -51,42 +46,12 @@ public final class FlectonePulseServerIdResolver {
             return fallback;
         }
 
-        String viaApi = resolveViaApi();
-        if (viaApi != null) {
-            plugin.getLogger().info("Using FlectonePulse's configured server id (\"" + viaApi
-                    + "\") instead of the server key from FlectoneGrowth's own config.yml.");
-            return viaApi;
-        }
-
-        return resolveViaConfigFile(plugin, fallback);
-    }
-
-    private static String resolveViaApi() {
         FileFacade fileFacade = FlectonePulseAccess.tryGetFileFacade();
-        if (fileFacade == null) return null;
+        String serverId = fileFacade != null ? fileFacade.config().server() : null;
+        if (serverId == null || serverId.isBlank()) return fallback;
 
-        String serverId = fileFacade.config().server();
-        return (serverId == null || serverId.isBlank()) ? null : serverId;
-    }
-
-    private static String resolveViaConfigFile(JavaPlugin plugin, String fallback) {
-        Plugin flectonePulse = Bukkit.getPluginManager().getPlugin(PLUGIN_NAME);
-        if (flectonePulse == null || !flectonePulse.isEnabled()) return fallback;
-
-        File configFile = new File(flectonePulse.getDataFolder(), "config.yml");
-        if (!configFile.exists()) return fallback;
-
-        try {
-            String serverId = YamlFileLoader.load(configFile).getString("server", "");
-            if (serverId == null || serverId.isBlank()) return fallback;
-
-            plugin.getLogger().info("Using FlectonePulse's configured server id (\"" + serverId
-                    + "\") instead of the server key from FlectoneGrowth's own config.yml.");
-            return serverId;
-        } catch (RuntimeException e) {
-            plugin.getLogger().warning("Found FlectonePulse but could not read its config.yml server id: "
-                    + e.getMessage() + " - falling back to FlectoneGrowth's own server key.");
-            return fallback;
-        }
+        plugin.getLogger().info("Using FlectonePulse's configured server id (\"" + serverId
+                + "\") instead of the server key from FlectoneGrowth's own config.yml.");
+        return serverId;
     }
 }
