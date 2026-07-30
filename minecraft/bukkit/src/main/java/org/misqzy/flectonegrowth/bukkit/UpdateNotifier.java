@@ -54,9 +54,12 @@ public final class UpdateNotifier extends Notifier {
                 UpdateChecker.latestVersionIfNewer(REPO_OWNER, REPO_NAME, BuildVersion.VERSION, logger)
                         .ifPresent(latest -> {
                             availableVersion = latest;
+                            // Not /releases - this project doesn't publish GitHub Releases, only
+                            // tags (see UpdateChecker/docs/ARCHITECTURE.md "Update checker" - the
+                            // /releases/latest API endpoint was verified live to 404 for this repo).
                             logger.warning("A new FlectoneGrowth version is available: v" + latest
                                     + " (running v" + BuildVersion.VERSION + "). Get it from "
-                                    + "https://github.com/" + REPO_OWNER + "/" + REPO_NAME + "/releases");
+                                    + "https://github.com/" + REPO_OWNER + "/" + REPO_NAME + "/tags");
                         }));
     }
 
