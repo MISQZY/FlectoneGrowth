@@ -2,7 +2,11 @@ package org.misqzy.flectonegrowth.common.domain;
 
 import org.misqzy.flectonegrowth.common.config.ConfigView;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -81,9 +85,10 @@ public final class GenderRegistry {
         return value != null && byAlias.containsKey(value.trim().toLowerCase());
     }
 
+    /** @param messageLookup a lookup that returns {@code null} for an undefined key (e.g. {@code Messages::rawOrNull}), not a visible placeholder string - otherwise that placeholder would render as-is instead of falling back to {@code gender.key()}. */
     public String resolveDisplayName(Gender gender, Function<String, String> messageLookup) {
         if (gender == null) return defaultGender.key();
         String raw = messageLookup.apply("gender.display." + gender.key());
-        return (raw == null || raw.startsWith("<red>Missing")) ? gender.key() : raw;
+        return raw != null ? raw : gender.key();
     }
 }

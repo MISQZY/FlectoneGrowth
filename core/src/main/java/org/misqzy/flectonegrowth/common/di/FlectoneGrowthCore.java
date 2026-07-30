@@ -6,7 +6,7 @@ import com.google.inject.Injector;
 import com.google.inject.Module;
 import org.misqzy.flectonegrowth.common.platform.PlayerLookup;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
-import org.misqzy.flectonegrowth.common.config.ConfigView;
+import org.misqzy.flectonegrowth.common.config.ConfigBundle;
 import org.misqzy.flectonegrowth.common.config.CoreConfig;
 import org.misqzy.flectonegrowth.common.config.IntegrationsConfig;
 import org.misqzy.flectonegrowth.common.domain.Gender;
@@ -19,8 +19,6 @@ import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.common.storage.Storage;
 import org.misqzy.flectonegrowth.common.storage.StorageFactory;
 
-import java.util.Map;
-import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -48,36 +46,22 @@ public final class FlectoneGrowthCore {
     }
 
     /**
-     * @param platform          platform-supplied handle (data folder, logger, scheduler, server id)
-     * @param platformModule    binds {@link Scheduler},
-     *                          {@link NetworkMessenger} and {@link PlayerLookup}
-     * @param mainConfigView    parsed config.yml
-     * @param genderConfigView  parsed gender.yml
-     * @param messagesByLocale  every loaded {@code localizations/messages_<code>.yml}, keyed by locale code -
-     *                          not just the configured default, so {@link Messages} can serve a specific
-     *                          recipient's own locale (e.g. a player's Minecraft client locale) on demand
-     * @param integrationsConfigView parsed integrations.yml
-     * @param fcolors           looks up FlectonePulse's configured {@code <fcolor:N>} palette on demand (empty if
-     *                          unavailable/disabled) - a live lookup, not a value, since the platform module's
-     *                          FlectonePulse detection can lag behind {@code onEnable()} by a beat (see {@link Messages})
+     * @param platform       platform-supplied handle (data folder, logger, scheduler, server id)
+     * @param platformModule binds {@link Scheduler}, {@link NetworkMessenger} and {@link PlayerLookup}
+     * @param resources      every parsed config resource - see {@link ConfigBundle}
      */
-    public static FlectoneGrowthCore bootstrap(Platform platform, Module platformModule,
-                                               ConfigView mainConfigView, ConfigView genderConfigView,
-                                               Map<String, ConfigView> messagesByLocale, ConfigView integrationsConfigView,
-                                               Supplier<Map<Integer, String>> fcolors) {
+    public static FlectoneGrowthCore bootstrap(Platform platform, Module platformModule, ConfigBundle resources) {
         FlectoneGrowthCore core = new FlectoneGrowthCore(platform);
-        core.buildAll(platformModule, mainConfigView, genderConfigView, messagesByLocale, integrationsConfigView, fcolors);
+        core.buildAll(platformModule, resources);
         return core;
     }
 
-    private void buildAll(Module platformModule, ConfigView mainConfigView, ConfigView genderConfigView,
-                           Map<String, ConfigView> messagesByLocale, ConfigView integrationsConfigView,
-                           Supplier<Map<Integer, String>> fcolors) {
-        this.config = new CoreConfig(mainConfigView);
-        this.integrations = new IntegrationsConfig(integrationsConfigView);
+    private void buildAll(Module platformModule, ConfigBundle resources) {
+        this.config = new CoreConfig(resources.mainConfig());
+        this.integrations = new IntegrationsConfig(resources.integrationsConfig());
         this.storage = initStorage(platform.logger(), platform.dataFolder(), config);
-        this.genderRegistry = new GenderRegistry(genderConfigView, config.maxScale());
-        this.messages = new Messages(messagesByLocale, config.locale(), config.primaryColor(), config.secondaryColor(), fcolors);
+        this.genderRegistry = new GenderRegistry(resources.genderConfig(), config.maxScale());
+        this.messages = new Messages(resources.messagesByLocale(), config.locale(), config.primaryColor(), config.secondaryColor(), resources.fcolors());
 
         this.injector = Guice.createInjector(
                 new CoreModule(config, storage, genderRegistry),
@@ -112,26 +96,31 @@ public final class FlectoneGrowthCore {
     }
 
     /** Rebuilds config/storage/gender registry from freshly re-read files and hot-swaps them into the running engine. */
-    public void reload(ConfigView mainConfigView, ConfigView genderConfigView,
-                        Map<String, ConfigView> messagesByLocale, ConfigView integrationsConfigView,
-                        Supplier<Map<Integer, String>> fcolors) {
-        CoreConfig newConfig = new CoreConfig(mainConfigView);
-        GenderRegistry newGenderRegistry = new GenderRegistry(genderConfigView, newConfig.maxScale());
+    public void reload(ConfigBundle resources) {
+        CoreConfig newConfig = new CoreConfig(resources.mainConfig());
+        GenderRegistry newGenderRegistry = new GenderRegistry(resources.genderConfig(), newConfig.maxScale());
 
+        Storage oldStorage = storage;
         Storage newStorage = storage;
-        if (storage.type() != newConfig.storageType()) {
-            Storage candidate = initStorage(platform.logger(), platform.dataFolder(), newConfig);
-            storage.close();
-            newStorage = candidate;
+        boolean storageChanged = storage.type() != newConfig.storageType();
+        if (storageChanged) {
+            newStorage = initStorage(platform.logger(), platform.dataFolder(), newConfig);
         }
 
         this.config = newConfig;
-        this.integrations = new IntegrationsConfig(integrationsConfigView);
+        this.integrations = new IntegrationsConfig(resources.integrationsConfig());
         this.storage = newStorage;
         this.genderRegistry = newGenderRegistry;
-        this.messages = new Messages(messagesByLocale, newConfig.locale(), newConfig.primaryColor(), newConfig.secondaryColor(), fcolors);
+        this.messages = new Messages(resources.messagesByLocale(), newConfig.locale(), newConfig.primaryColor(), newConfig.secondaryColor(), resources.fcolors());
 
+        // GrowthEngine keeps its own Storage reference, only updated by
+        // applyReload below - closing oldStorage before that call would let
+        // any in-flight async GrowthEngine operation (scheduled before this
+        // reload started) call a method on an already-closed HikariDataSource.
+        // Closing last, after every consumer has switched to newStorage,
+        // shrinks that window down to nothing but the swap itself.
         growthEngine().applyReload(newConfig, newStorage, newGenderRegistry);
+        if (storageChanged) oldStorage.close();
     }
 
     public void shutdown() {
@@ -158,9 +147,9 @@ public final class FlectoneGrowthCore {
         return genderRegistry;
     }
 
-    /** {@code gender}'s configured display name (falls back to its key if none is configured) - the composition every caller needs {@link GenderRegistry#resolveDisplayName} for, in one place instead of each re-wiring {@code messages()::raw} into it. */
+    /** {@code gender}'s configured display name (falls back to its key if none is configured) - the composition every caller needs {@link GenderRegistry#resolveDisplayName} for, in one place instead of each re-wiring {@code messages()::rawOrNull} into it. */
     public String genderDisplayName(Gender gender) {
-        return genderRegistry.resolveDisplayName(gender, messages::raw);
+        return genderRegistry.resolveDisplayName(gender, messages::rawOrNull);
     }
 
     /** {@code player}'s *current* gender's display name - see {@link #genderDisplayName(Gender)}. */

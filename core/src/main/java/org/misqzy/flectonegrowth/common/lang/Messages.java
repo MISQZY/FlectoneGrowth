@@ -129,6 +129,15 @@ public final class Messages {
         return data(locale).getString(key, "<red>Missing message: " + key + "</red>");
     }
 
+    /** Like {@link #raw(String, String)}, but returns {@code null} instead of a visible placeholder string when {@code key} isn't defined - for callers that need to tell "missing" apart from "resolved to text" (e.g. {@link org.misqzy.flectonegrowth.common.domain.GenderRegistry#resolveDisplayName}'s own fallback), rather than pattern-matching the placeholder text. */
+    public String rawOrNull(String key) {
+        return rawOrNull(defaultLocale, key);
+    }
+
+    public String rawOrNull(String locale, String key) {
+        return data(locale).getString(key, null);
+    }
+
     public Component get(String key, Map<String, Object> placeholders) {
         return get(defaultLocale, key, placeholders);
     }

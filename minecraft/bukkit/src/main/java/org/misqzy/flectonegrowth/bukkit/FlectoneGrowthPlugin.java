@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.misqzy.flectonegrowth.common.config.ConfigBundle;
 import org.misqzy.flectonegrowth.common.config.ConfigView;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.network.NetworkMessenger;
@@ -113,8 +114,8 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
             ConfigView mainConfig = loadConfig("config.yml");
             ConfigView integrationsConfig = loadConfig("integrations.yml");
             FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
-            core.reload(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
-                    () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig));
+            core.reload(new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
+                    () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
 
             scheduler.runSync(() -> {
                 if (ticker != null) ticker.restart();
@@ -157,8 +158,9 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
         BukkitModule bukkitModule = new BukkitModule(scheduler, messenger, lookup);
 
         FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
-        return FlectoneGrowthCore.bootstrap(platform, bukkitModule, mainConfig, loadConfig("gender.yml"), loadAllMessages(),
-                integrationsConfig, () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig));
+        return FlectoneGrowthCore.bootstrap(platform, bukkitModule,
+                new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
+                        () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
     }
 
     private PlatformPlayer findOnline(UUID uuid) {

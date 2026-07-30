@@ -93,8 +93,20 @@ public final class GrowthEngine {
     /** Called once per tick (main thread) with the currently online players. */
     public void tick(List<PlatformPlayer> onlinePlayers) {
         for (PlatformPlayer player : onlinePlayers) {
-            if (config.pauseWhenBoxedIn() && player.isGrowthBlocked()) continue;
+            // A profile only exists once loadPlayer's async load creates it -
+            // skip a player still mid-join rather than let applyScale's own
+            // getOrCreate hand back a fresh profile whose targetGrowthSeconds
+            // defaults to -1 ("not yet loaded"), which applyScale/isAtMaxGrowth
+            // treat the same as "instant growth" and force to max scale for
+            // one tick until the real load corrects it a moment later.
+            if (profiles.get(player.uuid()) == null) continue;
+            // Cheap in-memory check first: a player already at max growth
+            // never needs applyScale regardless of isGrowthBlocked, so there's
+            // no reason to pay for that block scan's world queries just to
+            // throw the result away. Independent conditions, same net skip
+            // decision either order - only the amount of work differs.
             if (isAtMaxGrowth(player)) continue;
+            if (config.pauseWhenBoxedIn() && player.isGrowthBlocked()) continue;
             applyScale(player);
         }
     }
@@ -376,32 +388,46 @@ public final class GrowthEngine {
 
             double newMax = genderRegistry.getMaxScaleFor(gender);
             PlayerProfile profile = profiles.getOrCreate(uuid, genderRegistry.getDefault());
-            Double currentCustom = profile.customScale();
-            boolean needsClamp = currentCustom != null && currentCustom > newMax;
-            boolean clampOk = !needsClamp || storage.setCustomScale(uuid, newMax);
-            if (needsClamp && !clampOk) {
-                // The gender write above already committed, so this can't be
-                // rolled back into a clean failure - but silently reporting
-                // onSuccess here would hide that the player's persisted
-                // custom scale is now above their new gender's cap (applyScale
-                // still clamps it visually via maxScaleFor, so nothing is
-                // wrong on screen, only in storage) until an admin happens to
-                // notice via /height or the raw DB. Surface it instead of
-                // swallowing it.
-                platform.logger().warning("setGender(" + uuid + ", " + gender.key() + "): gender saved, but "
-                        + "clamping the existing custom scale (" + currentCustom + ") down to the new max ("
-                        + newMax + ") failed to persist - the stored custom scale now exceeds this gender's cap "
-                        + "until it's re-set or storage is reachable again.");
-            }
+            boolean scaleClamped = clampCustomScaleForNewGender(uuid, gender, profile.customScale(), newMax);
 
             platform.scheduler().runSync(() -> {
                 profile.setGender(gender);
-                if (needsClamp && clampOk) profile.setCustomScale(newMax);
+                if (scaleClamped) profile.setCustomScale(newMax);
                 if (player.isOnline()) applyScale(player);
                 messenger.broadcast(SyncMessage.genderSet(uuid, gender.key(), platform.serverId()));
                 if (onSuccess != null) onSuccess.run();
             });
         });
+    }
+
+    /**
+     * If {@code currentCustom} now exceeds {@code newMax} under the player's
+     * new gender, persists a clamp down to {@code newMax} and reports
+     * whether that succeeded - {@link #applyScale} already clamps
+     * <em>visually</em> via {@link #maxScaleFor}, but the stored value
+     * itself needs correcting too, or a later {@code /height} read (or the
+     * raw DB) would show a custom scale above the new cap.
+     *
+     * @return {@code true} only if a clamp was both needed and successfully
+     *         persisted - the only case the caller should also update the
+     *         in-memory profile's custom scale.
+     */
+    private boolean clampCustomScaleForNewGender(UUID uuid, Gender gender, Double currentCustom, double newMax) {
+        if (currentCustom == null || currentCustom <= newMax) return false;
+
+        boolean persisted = storage.setCustomScale(uuid, newMax);
+        if (!persisted) {
+            // The gender write already committed by this point, so this
+            // can't be rolled back into a clean failure - but silently
+            // continuing would hide that the player's persisted custom
+            // scale is now above their new gender's cap until an admin
+            // happens to notice via /height or the raw DB. Surface it.
+            platform.logger().warning("setGender(" + uuid + ", " + gender.key() + "): gender saved, but "
+                    + "clamping the existing custom scale (" + currentCustom + ") down to the new max ("
+                    + newMax + ") failed to persist - the stored custom scale now exceeds this gender's cap "
+                    + "until it's re-set or storage is reachable again.");
+        }
+        return persisted;
     }
 
     // -----------------------------------------------------------------------
