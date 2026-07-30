@@ -10,7 +10,10 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.bukkit.BukkitPlayerAdapter;
+import org.misqzy.flectonegrowth.bukkit.GrowthBlockCache;
 import org.misqzy.flectonegrowth.bukkit.UpdateNotifier;
+
+import java.util.UUID;
 
 /**
  * Drives the growth engine's player lifecycle from Bukkit events, plus a
@@ -37,7 +40,9 @@ public final class PlayerConnectionListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        growthEngine.unloadPlayer(event.getPlayer().getUniqueId());
+        UUID uuid = event.getPlayer().getUniqueId();
+        growthEngine.unloadPlayer(uuid);
+        GrowthBlockCache.forget(uuid);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
