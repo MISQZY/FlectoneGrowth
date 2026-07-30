@@ -231,11 +231,16 @@ public final class Messages {
         return value.startsWith("<") ? value : "<" + value + ">";
     }
 
+    /** Placeholder values are usually stringified ({@link Placeholder#unparsed}), but a caller can pass a pre-built {@link Component} (e.g. one carrying a {@code ClickEvent}) via {@link Placeholder#component} instead - used by command-syntax placeholders that need to stay clickable. */
     private static TagResolver buildResolver(Map<String, Object> placeholders) {
         if (placeholders == null || placeholders.isEmpty()) return TagResolver.empty();
         TagResolver.Builder builder = TagResolver.builder();
         for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
-            builder.resolver(Placeholder.unparsed(entry.getKey(), String.valueOf(entry.getValue())));
+            Object value = entry.getValue();
+            TagResolver resolver = value instanceof Component component
+                    ? Placeholder.component(entry.getKey(), component)
+                    : Placeholder.unparsed(entry.getKey(), String.valueOf(value));
+            builder.resolver(resolver);
         }
         return builder.build();
     }

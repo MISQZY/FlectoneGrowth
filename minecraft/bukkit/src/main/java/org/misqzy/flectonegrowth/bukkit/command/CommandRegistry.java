@@ -1,5 +1,7 @@
 package org.misqzy.flectonegrowth.bukkit.command;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.SenderMapper;
 import org.incendo.cloud.annotations.AnnotationParser;
@@ -53,9 +55,19 @@ public final class CommandRegistry {
         manager.parserRegistry().registerSuggestionProvider("gender-types",
                 SuggestionProvider.blockingStrings((context, input) -> genderSuggestions(core)));
 
-        manager.exceptionController().registerHandler(InvalidSyntaxException.class, ctx ->
-                FlectoneGrowthMessages.send(core, ctx.context().sender(), "command.invalid-syntax",
-                        Map.of("syntax", "/" + ctx.exception().correctSyntax())));
+        manager.exceptionController().registerHandler(InvalidSyntaxException.class, ctx -> {
+            CommandSender sender = ctx.context().sender();
+            // HelpCommand's hand-maintained list, not Cloud's own auto-generated
+            // correctSyntax() - that walks the whole branching command tree from
+            // the failure point and can mash multiple literal/argument
+            // alternatives into one confusing string. Falls back to pointing at
+            // /flectonegrowth help when the matched literal chain doesn't
+            // uniquely identify one entry, rather than guessing.
+            Component syntax = HelpCommand.syntaxFor(sender, ctx.exception().currentChain())
+                    .orElseGet(() -> Component.text("/flectonegrowth help")
+                            .clickEvent(ClickEvent.suggestCommand("/flectonegrowth help")));
+            FlectoneGrowthMessages.send(core, sender, "command.invalid-syntax", Map.of("syntax", syntax));
+        });
 
         AnnotationParser<CommandSender> parser = new AnnotationParser<>(manager, CommandSender.class);
         parser.parse(new HeightCommand(core));
