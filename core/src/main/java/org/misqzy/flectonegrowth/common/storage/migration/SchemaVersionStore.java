@@ -26,8 +26,6 @@ public final class SchemaVersionStore {
     /** Stamped when the version row is missing/unreadable, e.g. a pre-unification install whose column still held a bare int. */
     private static final String UNKNOWN_VERSION = "0.0.0";
 
-    private static final String SELECT_SQL = "SELECT version FROM flectonegrowth_schema_version WHERE id = 1";
-
     private SchemaVersionStore() {}
 
     /**
@@ -38,10 +36,13 @@ public final class SchemaVersionStore {
      * {@code CREATE TABLE IF NOT EXISTS}), so a missing version row is
      * stamped with {@code pluginVersion} immediately rather than treated as
      * "run every migration ever written".
+     *
+     * @param schemaVersionTable the (possibly custom-prefixed, see {@code TableNames}) name of the
+     *                           single-row version table {@code upsertSql} itself already targets
      */
-    public static void migrateIfNeeded(Connection conn, StorageType dialect, String upsertSql,
+    public static void migrateIfNeeded(Connection conn, StorageType dialect, String schemaVersionTable, String upsertSql,
                                         String pluginVersion, Logger logger, String storageName) throws SQLException {
-        String current = readOrInitVersion(conn, upsertSql, pluginVersion);
+        String current = readOrInitVersion(conn, schemaVersionTable, upsertSql, pluginVersion);
         if (VersionComparator.compare(current, pluginVersion) >= 0) return;
 
         for (SchemaMigration step : SchemaMigrations.pending(current, pluginVersion)) {
@@ -51,8 +52,8 @@ public final class SchemaVersionStore {
         logger.info(storageName + " schema migrated from version " + current + " to " + pluginVersion + ".");
     }
 
-    private static String readOrInitVersion(Connection conn, String upsertSql, String pluginVersion) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement(SELECT_SQL);
+    private static String readOrInitVersion(Connection conn, String schemaVersionTable, String upsertSql, String pluginVersion) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("SELECT version FROM " + schemaVersionTable + " WHERE id = 1");
              ResultSet rs = stmt.executeQuery()) {
             if (rs.next()) {
                 // getString() reads a legacy INT-typed column (the pre-unification "1") as text too;

@@ -9,14 +9,21 @@ import java.util.List;
 import java.util.logging.Logger;
 
 /**
- * One-time rename of this project's tables from their pre-rebrand
- * {@code playergrowth_*} name to {@code flectonegrowth_*} - the plugin used
- * to be named PlayerGrowth, and every {@code CREATE TABLE IF NOT EXISTS} in
+ * One-time rename of this project's tables to whichever prefix is currently
+ * configured (see {@code storage.database.table-prefix},
+ * {@link org.misqzy.flectonegrowth.common.storage.TableNames}) from either of
+ * the two prefixes an existing install's tables might still carry: the
+ * pre-rebrand {@code playergrowth_*} name (the plugin used to be named
+ * PlayerGrowth) or this project's own historical default,
+ * {@code flectonegrowth_*} (an install that ran with the default before a
+ * custom prefix was configured for the first time). Every
+ * {@code CREATE TABLE IF NOT EXISTS} in
  * {@link org.misqzy.flectonegrowth.common.storage.AbstractSqlStorage} and
- * {@link org.misqzy.flectonegrowth.common.storage.H2Storage} now targets the
- * new name. Without this step an upgrading MySQL/MariaDB/H2 install would
- * find no {@code flectonegrowth_*} tables, silently create empty ones, and
- * orphan every existing player's data under the old name.
+ * {@link org.misqzy.flectonegrowth.common.storage.H2Storage} targets the
+ * currently-configured name; without this step, an upgrading install (or one
+ * that just changed its table prefix) would find none of its tables under
+ * that name, silently create empty ones, and orphan every existing player's
+ * data under whichever old name it's still sitting under.
  *
  * <p>{@code ALTER TABLE x RENAME TO y} is one of the few DDL statements
  * whose syntax is identical across MySQL, MariaDB, and H2, so a single
@@ -30,24 +37,30 @@ import java.util.logging.Logger;
  */
 public final class LegacyTableMigration {
 
-    private static final String OLD_PREFIX = "playergrowth_";
-    private static final String NEW_PREFIX = "flectonegrowth_";
+    /** Tried in order for each table still missing under the target prefix - the historical pre-rebrand name, then this project's own default. */
+    private static final List<String> OLD_PREFIXES = List.of("playergrowth_", "flectonegrowth_");
 
     private static final List<String> TABLES = List.of(
             "scales", "genders", "growth_time", "schema_version", "playtime");
 
     private LegacyTableMigration() {}
 
-    public static void renameIfNeeded(Connection conn, Logger logger, String storageName) throws SQLException {
+    public static void renameIfNeeded(Connection conn, Logger logger, String storageName, String targetPrefix) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
         for (String table : TABLES) {
-            String oldName = OLD_PREFIX + table;
-            String newName = NEW_PREFIX + table;
-            if (tableExists(meta, oldName) && !tableExists(meta, newName)) {
+            String newName = targetPrefix + table;
+            if (tableExists(meta, newName)) continue; // already under the currently-configured name
+
+            for (String oldPrefix : OLD_PREFIXES) {
+                if (oldPrefix.equals(targetPrefix)) continue; // renaming a prefix to itself isn't a migration
+                String oldName = oldPrefix + table;
+                if (!tableExists(meta, oldName)) continue;
+
                 try (Statement stmt = conn.createStatement()) {
                     stmt.executeUpdate("ALTER TABLE " + oldName + " RENAME TO " + newName);
                 }
-                logger.info(storageName + " renamed legacy table " + oldName + " to " + newName + " (PlayerGrowth -> FlectoneGrowth rename).");
+                logger.info(storageName + " renamed legacy table " + oldName + " to " + newName + ".");
+                break; // only one old-prefixed copy of a given table can exist at a time
             }
         }
     }

@@ -26,18 +26,19 @@ import java.util.logging.Logger;
  */
 public final class H2Storage implements Storage {
 
-    private static final String UPSERT_SCHEMA_VERSION_SQL =
-            "MERGE INTO flectonegrowth_schema_version (id, version) KEY(id) VALUES (1, ?)";
-
     private final Logger logger;
     private final File dataFolder;
     private final String pluginVersion;
+    private final TableNames tables;
+    private final String upsertSchemaVersionSql;
     private HikariDataSource dataSource;
 
-    public H2Storage(Logger logger, File dataFolder, String pluginVersion) {
+    public H2Storage(Logger logger, File dataFolder, String pluginVersion, String tablePrefix) {
         this.logger = logger;
         this.dataFolder = dataFolder;
         this.pluginVersion = pluginVersion;
+        this.tables = new TableNames(tablePrefix);
+        this.upsertSchemaVersionSql = "MERGE INTO " + tables.schemaVersion() + " (id, version) KEY(id) VALUES (1, ?)";
     }
 
     @Override
@@ -92,35 +93,35 @@ public final class H2Storage implements Storage {
         if (dataSource != null && !dataSource.isClosed()) dataSource.close();
     }
 
-    /** See {@link LegacyTableMigration} - renames this project's tables from their pre-rebrand {@code playergrowth_*} name if an upgrading install still has them, before {@link #createTables()} would otherwise create fresh empty ones under the new name. */
+    /** See {@link LegacyTableMigration} - renames this project's tables from their pre-rebrand {@code playergrowth_*} name (or the default {@code flectonegrowth_*} name, if {@link TableNames#prefix()} has just been customised) if an upgrading install still has them, before {@link #createTables()} would otherwise create fresh empty ones under the new name. */
     private void renameLegacyTablesIfNeeded() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            LegacyTableMigration.renameIfNeeded(conn, logger, "H2");
+            LegacyTableMigration.renameIfNeeded(conn, logger, "H2", tables.prefix());
         }
     }
 
     private void createTables() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_scales (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.scales() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, scale DOUBLE NOT NULL, " +
                             "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
             ).executeUpdate();
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_genders (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.genders() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, gender_key VARCHAR(32) NOT NULL DEFAULT 'male', " +
                             "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
             ).executeUpdate();
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_growth_time (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.growthTime() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, growth_seconds BIGINT NOT NULL, " +
                             "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
             ).executeUpdate();
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_schema_version (id INT PRIMARY KEY, version VARCHAR(32) NOT NULL)"
+                    "CREATE TABLE IF NOT EXISTS " + tables.schemaVersion() + " (id INT PRIMARY KEY, version VARCHAR(32) NOT NULL)"
             ).executeUpdate();
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_playtime (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.playtime() + " (" +
                             "uuid VARCHAR(36) NOT NULL, server VARCHAR(64) NOT NULL DEFAULT '', " +
                             "first_seen BIGINT NOT NULL, last_seen BIGINT NOT NULL, " +
                             "total_seconds BIGINT NOT NULL DEFAULT 0, sessions INT NOT NULL DEFAULT 0, " +
@@ -133,137 +134,97 @@ public final class H2Storage implements Storage {
      * Runs any pending schema migrations via {@link SchemaVersionStore} - see
      * that class for the shared read/compare/migrate/write orchestration
      * (identical here and in {@code AbstractSqlStorage}; only
-     * {@link #UPSERT_SCHEMA_VERSION_SQL} actually differs between dialects).
+     * {@link #upsertSchemaVersionSql} actually differs between dialects).
      */
     private void migrateSchemaIfNeeded() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            SchemaVersionStore.migrateIfNeeded(conn, StorageType.H2, UPSERT_SCHEMA_VERSION_SQL, pluginVersion, logger, "H2");
+            SchemaVersionStore.migrateIfNeeded(conn, StorageType.H2, tables.schemaVersion(), upsertSchemaVersionSql, pluginVersion, logger, "H2");
         }
     }
 
     @Override
     public Double getCustomScale(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT scale FROM flectonegrowth_scales WHERE uuid = ? AND valid = TRUE")) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getDouble("scale") : null;
-            }
-        } catch (SQLException e) {
-            logger.severe("H2 getCustomScale: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT scale FROM " + tables.scales() + " WHERE uuid = ? AND valid = TRUE",
+                stmt -> stmt.setString(1, uuid.toString()),
+                rs -> rs.getDouble("scale"), null,
+                logger, "H2", "getCustomScale");
     }
 
     @Override
     public boolean setCustomScale(UUID uuid, double scale) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "MERGE INTO flectonegrowth_scales (uuid, scale, valid, updated_at) KEY(uuid) " +
-                             "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setDouble(2, scale);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe("H2 setCustomScale: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "MERGE INTO " + tables.scales() + " (uuid, scale, valid, updated_at) KEY(uuid) " +
+                        "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setDouble(2, scale);
+                },
+                logger, "H2", "setCustomScale");
     }
 
     @Override
     public boolean removeCustomScale(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "UPDATE flectonegrowth_scales SET valid = FALSE, updated_at = CURRENT_TIMESTAMP WHERE uuid = ? AND valid = TRUE")) {
-            stmt.setString(1, uuid.toString());
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe("H2 removeCustomScale: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "UPDATE " + tables.scales() + " SET valid = FALSE, updated_at = CURRENT_TIMESTAMP WHERE uuid = ? AND valid = TRUE",
+                stmt -> stmt.setString(1, uuid.toString()),
+                logger, "H2", "removeCustomScale");
     }
 
     @Override
     public String getGenderKey(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT gender_key FROM flectonegrowth_genders WHERE uuid = ? AND valid = TRUE")) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getString("gender_key") : null;
-            }
-        } catch (SQLException e) {
-            logger.severe("H2 getGenderKey: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT gender_key FROM " + tables.genders() + " WHERE uuid = ? AND valid = TRUE",
+                stmt -> stmt.setString(1, uuid.toString()),
+                rs -> rs.getString("gender_key"), null,
+                logger, "H2", "getGenderKey");
     }
 
     @Override
     public boolean setGenderKey(UUID uuid, String genderKey) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "MERGE INTO flectonegrowth_genders (uuid, gender_key, valid, updated_at) KEY(uuid) " +
-                             "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, genderKey.toLowerCase());
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe("H2 setGenderKey: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "MERGE INTO " + tables.genders() + " (uuid, gender_key, valid, updated_at) KEY(uuid) " +
+                        "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, genderKey.toLowerCase());
+                },
+                logger, "H2", "setGenderKey");
     }
 
     @Override
     public Long getGrowthTimeSeconds(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT growth_seconds FROM flectonegrowth_growth_time WHERE uuid = ? AND valid = TRUE")) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getLong("growth_seconds") : null;
-            }
-        } catch (SQLException e) {
-            logger.severe("H2 getGrowthTimeSeconds: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT growth_seconds FROM " + tables.growthTime() + " WHERE uuid = ? AND valid = TRUE",
+                stmt -> stmt.setString(1, uuid.toString()),
+                rs -> rs.getLong("growth_seconds"), null,
+                logger, "H2", "getGrowthTimeSeconds");
     }
 
     @Override
     public boolean setGrowthTimeSeconds(UUID uuid, long seconds) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "MERGE INTO flectonegrowth_growth_time (uuid, growth_seconds, valid, updated_at) KEY(uuid) " +
-                             "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setLong(2, seconds);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe("H2 setGrowthTimeSeconds: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "MERGE INTO " + tables.growthTime() + " (uuid, growth_seconds, valid, updated_at) KEY(uuid) " +
+                        "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setLong(2, seconds);
+                },
+                logger, "H2", "setGrowthTimeSeconds");
     }
 
     @Override
     public PlayTime getPlayTime(UUID uuid, String server) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT first_seen, last_seen, total_seconds, sessions FROM flectonegrowth_playtime WHERE uuid = ? AND server = ?")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, server);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) return null;
-                return new PlayTime(rs.getLong("first_seen"), rs.getLong("last_seen"),
-                        rs.getLong("total_seconds"), rs.getInt("sessions"));
-            }
-        } catch (SQLException e) {
-            logger.severe("H2 getPlayTime: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT first_seen, last_seen, total_seconds, sessions FROM " + tables.playtime() + " WHERE uuid = ? AND server = ?",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, server);
+                },
+                rs -> new PlayTime(rs.getLong("first_seen"), rs.getLong("last_seen"),
+                        rs.getLong("total_seconds"), rs.getInt("sessions")),
+                null,
+                logger, "H2", "getPlayTime");
     }
 
     /**
@@ -280,7 +241,7 @@ public final class H2Storage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             PlayTime existing;
             try (PreparedStatement select = conn.prepareStatement(
-                    "SELECT first_seen, last_seen, total_seconds, sessions FROM flectonegrowth_playtime WHERE uuid = ? AND server = ?")) {
+                    "SELECT first_seen, last_seen, total_seconds, sessions FROM " + tables.playtime() + " WHERE uuid = ? AND server = ?")) {
                 select.setString(1, uuid.toString());
                 select.setString(2, server);
                 try (ResultSet rs = select.executeQuery()) {
@@ -295,7 +256,7 @@ public final class H2Storage implements Storage {
             int sessions = existing != null ? existing.sessions() + 1 : 1;
 
             try (PreparedStatement merge = conn.prepareStatement(
-                    "MERGE INTO flectonegrowth_playtime (uuid, server, first_seen, last_seen, total_seconds, sessions) KEY(uuid, server) " +
+                    "MERGE INTO " + tables.playtime() + " (uuid, server, first_seen, last_seen, total_seconds, sessions) KEY(uuid, server) " +
                             "VALUES (?, ?, ?, ?, ?, ?)")) {
                 merge.setString(1, uuid.toString());
                 merge.setString(2, server);
@@ -314,18 +275,14 @@ public final class H2Storage implements Storage {
 
     @Override
     public boolean checkpointPlayTime(UUID uuid, String server, long totalSeconds, long nowEpochSeconds) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "UPDATE flectonegrowth_playtime SET last_seen = ?, total_seconds = ? WHERE uuid = ? AND server = ?")) {
-            stmt.setLong(1, nowEpochSeconds);
-            stmt.setLong(2, totalSeconds);
-            stmt.setString(3, uuid.toString());
-            stmt.setString(4, server);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe("H2 checkpointPlayTime: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "UPDATE " + tables.playtime() + " SET last_seen = ?, total_seconds = ? WHERE uuid = ? AND server = ?",
+                stmt -> {
+                    stmt.setLong(1, nowEpochSeconds);
+                    stmt.setLong(2, totalSeconds);
+                    stmt.setString(3, uuid.toString());
+                    stmt.setString(4, server);
+                },
+                logger, "H2", "checkpointPlayTime");
     }
 }

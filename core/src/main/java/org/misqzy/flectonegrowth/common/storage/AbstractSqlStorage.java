@@ -7,8 +7,6 @@ import org.misqzy.flectonegrowth.common.storage.migration.LegacyTableMigration;
 import org.misqzy.flectonegrowth.common.storage.migration.SchemaVersionStore;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -21,45 +19,24 @@ import java.util.logging.Logger;
  */
 public abstract class AbstractSqlStorage implements Storage {
 
-    private static final String UPSERT_SCHEMA_VERSION_SQL =
-            "INSERT INTO flectonegrowth_schema_version (id, version) VALUES (1, ?) " +
-                    "ON DUPLICATE KEY UPDATE version = VALUES(version)";
-
     protected final Logger logger;
     protected HikariDataSource dataSource;
 
-    private final String host;
-    private final int port;
-    private final String database;
-    private final String username;
-    private final String password;
-    private final int maxPoolSize;
-    private final int minIdle;
-    private final long connectionTimeoutMs;
-    private final long idleTimeoutMs;
-    private final long maxLifetimeMs;
+    private final SqlConnectionSettings settings;
     private final String pluginVersion;
+    private final TableNames tables;
+    private final String upsertSchemaVersionSql;
 
-    protected AbstractSqlStorage(Logger logger, String host, int port, String database,
-                                  String username, String password,
-                                  int maxPoolSize, int minIdle,
-                                  long connectionTimeoutMs, long idleTimeoutMs, long maxLifetimeMs,
-                                  String pluginVersion) {
+    protected AbstractSqlStorage(Logger logger, SqlConnectionSettings settings, String pluginVersion) {
         this.logger = logger;
-        this.host = host;
-        this.port = port;
-        this.database = database;
-        this.username = username;
-        this.password = password;
-        this.maxPoolSize = maxPoolSize;
-        this.minIdle = minIdle;
-        this.connectionTimeoutMs = connectionTimeoutMs;
-        this.idleTimeoutMs = idleTimeoutMs;
-        this.maxLifetimeMs = maxLifetimeMs;
+        this.settings = settings;
         this.pluginVersion = pluginVersion;
+        this.tables = new TableNames(settings.tablePrefix());
+        this.upsertSchemaVersionSql = "INSERT INTO " + tables.schemaVersion() + " (id, version) VALUES (1, ?) "
+                + "ON DUPLICATE KEY UPDATE version = VALUES(version)";
     }
 
-    protected abstract String buildJdbcUrl(String host, int port, String database);
+    protected abstract String buildJdbcUrl(SqlConnectionSettings settings);
     protected abstract String driverClassName();
     protected abstract String storageName();
 
@@ -67,15 +44,15 @@ public abstract class AbstractSqlStorage implements Storage {
     public boolean initialize() {
         try {
             HikariConfig cfg = new HikariConfig();
-            cfg.setJdbcUrl(buildJdbcUrl(host, port, database));
-            cfg.setUsername(username);
-            cfg.setPassword(password);
+            cfg.setJdbcUrl(buildJdbcUrl(settings));
+            cfg.setUsername(settings.username());
+            cfg.setPassword(settings.password());
             cfg.setDriverClassName(driverClassName());
-            cfg.setMaximumPoolSize(maxPoolSize);
-            cfg.setMinimumIdle(minIdle);
-            cfg.setConnectionTimeout(connectionTimeoutMs);
-            cfg.setIdleTimeout(idleTimeoutMs);
-            cfg.setMaxLifetime(maxLifetimeMs);
+            cfg.setMaximumPoolSize(settings.maxPoolSize());
+            cfg.setMinimumIdle(settings.minIdle());
+            cfg.setConnectionTimeout(settings.connectionTimeoutMs());
+            cfg.setIdleTimeout(settings.idleTimeoutMs());
+            cfg.setMaxLifetime(settings.maxLifetimeMs());
             cfg.setLeakDetectionThreshold(60_000);
             cfg.setPoolName("FlectoneGrowth-" + storageName());
 
@@ -106,44 +83,44 @@ public abstract class AbstractSqlStorage implements Storage {
         if (dataSource != null && !dataSource.isClosed()) dataSource.close();
     }
 
-    /** See {@link LegacyTableMigration} - renames this project's tables from their pre-rebrand {@code playergrowth_*} name if an upgrading install still has them, before {@link #createTables()} would otherwise create fresh empty ones under the new name. */
+    /** See {@link LegacyTableMigration} - renames this project's tables from their pre-rebrand {@code playergrowth_*} name (or the default {@code flectonegrowth_*} name, if {@link TableNames#prefix()} has just been customised) if an upgrading install still has them, before {@link #createTables()} would otherwise create fresh empty ones under the new name. */
     private void renameLegacyTablesIfNeeded() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            LegacyTableMigration.renameIfNeeded(conn, logger, storageName());
+            LegacyTableMigration.renameIfNeeded(conn, logger, storageName(), tables.prefix());
         }
     }
 
     private void createTables() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_scales (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.scales() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, scale DOUBLE NOT NULL, valid TINYINT(1) NOT NULL DEFAULT 1, " +
                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             ).executeUpdate();
 
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_genders (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.genders() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, gender_key VARCHAR(32) NOT NULL DEFAULT 'male', valid TINYINT(1) NOT NULL DEFAULT 1, " +
                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             ).executeUpdate();
 
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_growth_time (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.growthTime() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, growth_seconds BIGINT NOT NULL, valid TINYINT(1) NOT NULL DEFAULT 1, " +
                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             ).executeUpdate();
 
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_schema_version (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.schemaVersion() + " (" +
                             "id INT PRIMARY KEY, version VARCHAR(32) NOT NULL" +
                             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             ).executeUpdate();
 
             conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS flectonegrowth_playtime (" +
+                    "CREATE TABLE IF NOT EXISTS " + tables.playtime() + " (" +
                             "uuid VARCHAR(36) NOT NULL, server VARCHAR(64) NOT NULL DEFAULT '', " +
                             "first_seen BIGINT NOT NULL, last_seen BIGINT NOT NULL, " +
                             "total_seconds BIGINT NOT NULL DEFAULT 0, sessions INT NOT NULL DEFAULT 0, " +
@@ -156,173 +133,125 @@ public abstract class AbstractSqlStorage implements Storage {
     /**
      * Runs any pending schema migrations via {@link SchemaVersionStore} - see
      * that class for the shared read/compare/migrate/write orchestration
-     * (identical here and in {@code H2Storage}; only {@link #UPSERT_SCHEMA_VERSION_SQL}
+     * (identical here and in {@code H2Storage}; only {@link #upsertSchemaVersionSql}
      * actually differs between dialects).
      */
     private void migrateSchemaIfNeeded() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            SchemaVersionStore.migrateIfNeeded(conn, type(), UPSERT_SCHEMA_VERSION_SQL, pluginVersion, logger, storageName());
+            SchemaVersionStore.migrateIfNeeded(conn, type(), tables.schemaVersion(), upsertSchemaVersionSql, pluginVersion, logger, storageName());
         }
     }
 
     @Override
     public Double getCustomScale(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT scale FROM flectonegrowth_scales WHERE uuid = ? AND valid = 1")) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getDouble("scale") : null;
-            }
-        } catch (SQLException e) {
-            logger.severe(storageName() + " getCustomScale: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT scale FROM " + tables.scales() + " WHERE uuid = ? AND valid = 1",
+                stmt -> stmt.setString(1, uuid.toString()),
+                rs -> rs.getDouble("scale"), null,
+                logger, storageName(), "getCustomScale");
     }
 
     @Override
     public boolean setCustomScale(UUID uuid, double scale) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "INSERT INTO flectonegrowth_scales (uuid, scale, valid, updated_at) VALUES (?, ?, 1, NOW()) " +
-                             "ON DUPLICATE KEY UPDATE scale = VALUES(scale), valid = 1, updated_at = NOW()")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setDouble(2, scale);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe(storageName() + " setCustomScale: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "INSERT INTO " + tables.scales() + " (uuid, scale, valid, updated_at) VALUES (?, ?, 1, NOW()) " +
+                        "ON DUPLICATE KEY UPDATE scale = VALUES(scale), valid = 1, updated_at = NOW()",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setDouble(2, scale);
+                },
+                logger, storageName(), "setCustomScale");
     }
 
     @Override
     public boolean removeCustomScale(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "UPDATE flectonegrowth_scales SET valid = 0, updated_at = NOW() WHERE uuid = ? AND valid = 1")) {
-            stmt.setString(1, uuid.toString());
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe(storageName() + " removeCustomScale: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "UPDATE " + tables.scales() + " SET valid = 0, updated_at = NOW() WHERE uuid = ? AND valid = 1",
+                stmt -> stmt.setString(1, uuid.toString()),
+                logger, storageName(), "removeCustomScale");
     }
 
     @Override
     public String getGenderKey(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT gender_key FROM flectonegrowth_genders WHERE uuid = ? AND valid = 1")) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getString("gender_key") : null;
-            }
-        } catch (SQLException e) {
-            logger.severe(storageName() + " getGenderKey: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT gender_key FROM " + tables.genders() + " WHERE uuid = ? AND valid = 1",
+                stmt -> stmt.setString(1, uuid.toString()),
+                rs -> rs.getString("gender_key"), null,
+                logger, storageName(), "getGenderKey");
     }
 
     @Override
     public boolean setGenderKey(UUID uuid, String genderKey) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "INSERT INTO flectonegrowth_genders (uuid, gender_key, valid, updated_at) VALUES (?, ?, 1, NOW()) " +
-                             "ON DUPLICATE KEY UPDATE gender_key = VALUES(gender_key), valid = 1, updated_at = NOW()")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, genderKey.toLowerCase());
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe(storageName() + " setGenderKey: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "INSERT INTO " + tables.genders() + " (uuid, gender_key, valid, updated_at) VALUES (?, ?, 1, NOW()) " +
+                        "ON DUPLICATE KEY UPDATE gender_key = VALUES(gender_key), valid = 1, updated_at = NOW()",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, genderKey.toLowerCase());
+                },
+                logger, storageName(), "setGenderKey");
     }
 
     @Override
     public Long getGrowthTimeSeconds(UUID uuid) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT growth_seconds FROM flectonegrowth_growth_time WHERE uuid = ? AND valid = 1")) {
-            stmt.setString(1, uuid.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getLong("growth_seconds") : null;
-            }
-        } catch (SQLException e) {
-            logger.severe(storageName() + " getGrowthTimeSeconds: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT growth_seconds FROM " + tables.growthTime() + " WHERE uuid = ? AND valid = 1",
+                stmt -> stmt.setString(1, uuid.toString()),
+                rs -> rs.getLong("growth_seconds"), null,
+                logger, storageName(), "getGrowthTimeSeconds");
     }
 
     @Override
     public boolean setGrowthTimeSeconds(UUID uuid, long seconds) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "INSERT INTO flectonegrowth_growth_time (uuid, growth_seconds, valid, updated_at) VALUES (?, ?, 1, NOW()) " +
-                             "ON DUPLICATE KEY UPDATE growth_seconds = VALUES(growth_seconds), valid = 1, updated_at = NOW()")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setLong(2, seconds);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe(storageName() + " setGrowthTimeSeconds: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "INSERT INTO " + tables.growthTime() + " (uuid, growth_seconds, valid, updated_at) VALUES (?, ?, 1, NOW()) " +
+                        "ON DUPLICATE KEY UPDATE growth_seconds = VALUES(growth_seconds), valid = 1, updated_at = NOW()",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setLong(2, seconds);
+                },
+                logger, storageName(), "setGrowthTimeSeconds");
     }
 
     @Override
     public PlayTime getPlayTime(UUID uuid, String server) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT first_seen, last_seen, total_seconds, sessions FROM flectonegrowth_playtime WHERE uuid = ? AND server = ?")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, server);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) return null;
-                return new PlayTime(rs.getLong("first_seen"), rs.getLong("last_seen"),
-                        rs.getLong("total_seconds"), rs.getInt("sessions"));
-            }
-        } catch (SQLException e) {
-            logger.severe(storageName() + " getPlayTime: " + e.getMessage());
-            return null;
-        }
+        return SqlOps.query(dataSource,
+                "SELECT first_seen, last_seen, total_seconds, sessions FROM " + tables.playtime() + " WHERE uuid = ? AND server = ?",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, server);
+                },
+                rs -> new PlayTime(rs.getLong("first_seen"), rs.getLong("last_seen"),
+                        rs.getLong("total_seconds"), rs.getInt("sessions")),
+                null,
+                logger, storageName(), "getPlayTime");
     }
 
     @Override
     public boolean recordJoin(UUID uuid, String server, long nowEpochSeconds) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "INSERT INTO flectonegrowth_playtime (uuid, server, first_seen, last_seen, total_seconds, sessions) " +
-                             "VALUES (?, ?, ?, ?, 0, 1) " +
-                             "ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen), sessions = sessions + 1")) {
-            stmt.setString(1, uuid.toString());
-            stmt.setString(2, server);
-            stmt.setLong(3, nowEpochSeconds);
-            stmt.setLong(4, nowEpochSeconds);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe(storageName() + " recordJoin: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "INSERT INTO " + tables.playtime() + " (uuid, server, first_seen, last_seen, total_seconds, sessions) " +
+                        "VALUES (?, ?, ?, ?, 0, 1) " +
+                        "ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen), sessions = sessions + 1",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, server);
+                    stmt.setLong(3, nowEpochSeconds);
+                    stmt.setLong(4, nowEpochSeconds);
+                },
+                logger, storageName(), "recordJoin");
     }
 
     @Override
     public boolean checkpointPlayTime(UUID uuid, String server, long totalSeconds, long nowEpochSeconds) {
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(
-                     "UPDATE flectonegrowth_playtime SET last_seen = ?, total_seconds = ? WHERE uuid = ? AND server = ?")) {
-            stmt.setLong(1, nowEpochSeconds);
-            stmt.setLong(2, totalSeconds);
-            stmt.setString(3, uuid.toString());
-            stmt.setString(4, server);
-            stmt.executeUpdate();
-            return true;
-        } catch (SQLException e) {
-            logger.severe(storageName() + " checkpointPlayTime: " + e.getMessage());
-            return false;
-        }
+        return SqlOps.update(dataSource,
+                "UPDATE " + tables.playtime() + " SET last_seen = ?, total_seconds = ? WHERE uuid = ? AND server = ?",
+                stmt -> {
+                    stmt.setLong(1, nowEpochSeconds);
+                    stmt.setLong(2, totalSeconds);
+                    stmt.setString(3, uuid.toString());
+                    stmt.setString(4, server);
+                },
+                logger, storageName(), "checkpointPlayTime");
     }
 }

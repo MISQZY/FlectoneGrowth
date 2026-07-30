@@ -30,6 +30,8 @@ public final class CoreConfig {
     private final String dbName;
     private final String dbUsername;
     private final String dbPassword;
+    private final String dbTablePrefix;
+    private final String dbParams;
     private final int maxPoolSize;
     private final int minIdle;
     private final long connectionTimeoutMs;
@@ -78,6 +80,18 @@ public final class CoreConfig {
         this.dbName = cfg.getString("storage.database.name", "playergrowth");
         this.dbUsername = cfg.getString("storage.database.username", "root");
         this.dbPassword = cfg.getString("storage.database.password", "");
+        // Lets a network sharing one physical database run several
+        // FlectoneGrowth instances (or coexist with a renamed legacy
+        // install) side by side without their tables colliding - default
+        // matches every table name this project has always used, so an
+        // unset key changes nothing for an existing install. No trailing
+        // '_' needed here - TableNames appends it automatically.
+        this.dbTablePrefix = cfg.getString("storage.database.table-prefix", "flectonegrowth");
+        // Raw JDBC URL query string appended after '?' (e.g.
+        // "useSSL=true&characterEncoding=utf8") - blank (the default) keeps
+        // using this project's own built-in defaults, see MySQLStorage/
+        // MariaDbStorage#buildJdbcUrl. Only consulted for MYSQL/MARIADB.
+        this.dbParams = cfg.getString("storage.database.params", "");
         this.maxPoolSize = cfg.getInt("storage.database.pool.maximum-pool-size", 10);
         this.minIdle = cfg.getInt("storage.database.pool.minimum-idle", 2);
         this.connectionTimeoutMs = cfg.getLong("storage.database.pool.connection-timeout", 30_000L);
@@ -117,6 +131,8 @@ public final class CoreConfig {
     public String dbName() { return dbName; }
     public String dbUsername() { return dbUsername; }
     public String dbPassword() { return dbPassword; }
+    public String dbTablePrefix() { return dbTablePrefix; }
+    public String dbParams() { return dbParams; }
     public int maxPoolSize() { return maxPoolSize; }
     public int minIdle() { return minIdle; }
     public long connectionTimeoutMs() { return connectionTimeoutMs; }

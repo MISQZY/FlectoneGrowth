@@ -46,6 +46,19 @@ storage:
     name: flectonegrowth
     username: root
     password: ''
+    # Prepended to every table name (flectonegrowth_scales, etc.) - no
+    # trailing '_' needed, it's added automatically. Lets a network sharing
+    # one physical database run more than one FlectoneGrowth instance against
+    # it without their tables colliding. Existing tables are renamed
+    # automatically the first time this changes (see LegacyTableMigration),
+    # same mechanism as the PlayerGrowth -> FlectoneGrowth rebrand. Only used
+    # by MYSQL/MARIADB/H2 - ignored by YAML storage.
+    table-prefix: 'flectonegrowth'
+    # Raw JDBC URL query string appended after '?', e.g.
+    # 'useSSL=true&characterEncoding=utf8'. Leave blank (default) to use this
+    # plugin's own built-in defaults for the configured storage.type. Only
+    # used by MYSQL/MARIADB.
+    params: ''
     pool:
       maximum-pool-size: 10
       minimum-idle: 2

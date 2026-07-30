@@ -4,18 +4,16 @@ import java.util.logging.Logger;
 
 public final class MariaDbStorage extends AbstractSqlStorage {
 
-    public MariaDbStorage(Logger logger, String host, int port, String database,
-                           String username, String password,
-                           int maxPoolSize, int minIdle,
-                           long connectionTimeoutMs, long idleTimeoutMs, long maxLifetimeMs,
-                           String pluginVersion) {
-        super(logger, host, port, database, username, password,
-                maxPoolSize, minIdle, connectionTimeoutMs, idleTimeoutMs, maxLifetimeMs, pluginVersion);
+    private static final String DEFAULT_PARAMS = "useSSL=false&serverTimezone=UTC";
+
+    public MariaDbStorage(Logger logger, SqlConnectionSettings settings, String pluginVersion) {
+        super(logger, settings, pluginVersion);
     }
 
     @Override
-    protected String buildJdbcUrl(String host, int port, String database) {
-        return "jdbc:mariadb://" + host + ":" + port + "/" + database + "?useSSL=false&serverTimezone=UTC";
+    protected String buildJdbcUrl(SqlConnectionSettings settings) {
+        String params = settings.params().isBlank() ? DEFAULT_PARAMS : settings.params();
+        return "jdbc:mariadb://" + settings.host() + ":" + settings.port() + "/" + settings.database() + "?" + params;
     }
 
     @Override protected String driverClassName() { return "org.mariadb.jdbc.Driver"; }
