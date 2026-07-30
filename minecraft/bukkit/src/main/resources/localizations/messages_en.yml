@@ -44,7 +44,7 @@ growth-info:
 
 admin:
   reloaded: '<primary><secondary>FlectoneGrowth</secondary> configuration successfully reloaded! (<secondary><time></secondary>).</primary>'
-  update-available: '<primary>A new <secondary>FlectoneGrowth</secondary> version is available: <secondary><latest></secondary><primary> (you have <secondary><current></secondary><primary>). Download: <secondary>https://github.com/MISQZY/FlectoneGrowth/releases</secondary>'
+  update-available: '<primary>A new <secondary>FlectoneGrowth</secondary> version is available: <secondary><latest></secondary><primary> (you have <secondary><current></secondary><primary>). Download: <secondary><url></secondary>'
 
 help:
   header: '<primary>--- FlectoneGrowth commands ---</primary>'

@@ -54,12 +54,8 @@ public final class UpdateNotifier extends Notifier {
                 UpdateChecker.latestVersionIfNewer(REPO_OWNER, REPO_NAME, BuildVersion.VERSION, logger)
                         .ifPresent(latest -> {
                             availableVersion = latest;
-                            // Not /releases - this project doesn't publish GitHub Releases, only
-                            // tags (see UpdateChecker/docs/ARCHITECTURE.md "Update checker" - the
-                            // /releases/latest API endpoint was verified live to 404 for this repo).
                             logger.warning("A new FlectoneGrowth version is available: v" + latest
-                                    + " (running v" + BuildVersion.VERSION + "). Get it from "
-                                    + "https://github.com/" + REPO_OWNER + "/" + REPO_NAME + "/tags");
+                                    + " (running v" + BuildVersion.VERSION + "). Get it from " + releaseUrl());
                         }));
     }
 
@@ -69,6 +65,21 @@ public final class UpdateNotifier extends Notifier {
 
         notify(new BukkitPlayerAdapter(player), "admin.update-available", Map.of(
                 "latest", latest,
-                "current", BuildVersion.VERSION));
+                "current", BuildVersion.VERSION,
+                "url", releaseUrl()));
+    }
+
+    /**
+     * Not {@code /releases} - this project doesn't publish GitHub Releases,
+     * only tags (see {@link UpdateChecker} - the {@code /releases/latest}
+     * API endpoint was verified live to 404 for this repo). The one place
+     * this URL is built, used by both {@link #checkAsync} (console log) and
+     * {@link #notifyIfPending} (the {@code <url>} placeholder in
+     * {@code admin.update-available}) - previously the localization string
+     * also hardcoded its own (stale, {@code /releases}-pointing) copy of
+     * this URL independently.
+     */
+    private static String releaseUrl() {
+        return "https://github.com/" + REPO_OWNER + "/" + REPO_NAME + "/tags";
     }
 }
