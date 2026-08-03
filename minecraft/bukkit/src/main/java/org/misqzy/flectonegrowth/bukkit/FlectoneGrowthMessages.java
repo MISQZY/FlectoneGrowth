@@ -135,7 +135,7 @@ public final class FlectoneGrowthMessages {
      */
     private static boolean tryFlectonePulseSend(Player player, Messages messages, String locale, String key, Map<String, Object> placeholders) {
         try {
-            return FlectonePulseMessageDispatcher.trySend(player, messages.rawForDispatch(locale, key), messages.externalDispatchResolvers(placeholders));
+            return FlectonePulseMessageDispatcher.trySend(player, messages.rawForDispatch(locale, key, placeholders), messages.externalDispatchResolvers(placeholders));
         } catch (RuntimeException | LinkageError e) {
             return false;
         }

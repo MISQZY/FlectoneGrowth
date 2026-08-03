@@ -21,7 +21,8 @@ public final class PluginAdminCommand {
     @CommandDescription("Reload the FlectoneGrowth configuration.")
     @Permission("flectonegrowth.admin.reload")
     public void reload(CommandSender sender) {
+        String locale = FlectoneGrowthMessages.resolveLocale(plugin.core(), sender);
         plugin.reload(time -> FlectoneGrowthMessages.send(plugin.core(), sender, "admin.reloaded",
-                Map.of("time", TimeFormatter.formatMillis(time))));
+                Map.of("time", TimeFormatter.formatMillis(time, plugin.core().messages(), locale))));
     }
 }

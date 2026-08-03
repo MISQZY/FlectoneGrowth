@@ -47,6 +47,9 @@ public final class CommandRegistry {
     /** Number of evenly-spaced height suggestions offered between min and max scale (min, max, and this many steps in between). */
     private static final int HEIGHT_SUGGESTION_STEPS = 4;
 
+    /** The constant, argument-describing tail commandSyntaxFormatter below always appends after the literal chain - shared with the InvalidSyntaxException handler so it can strip exactly this back off {@code correctSyntax()}'s result to recover just the literal chain (see that handler for why). */
+    private static final String SYNTAX_ARGUMENT_SUFFIX = "<type> [args]";
+
     private final BukkitCommandManager<CommandSender> manager;
 
     public CommandRegistry(FlectoneGrowthPlugin plugin, FlectoneGrowthCore core) {
@@ -83,23 +86,37 @@ public final class CommandRegistry {
         // that same trailing-garbage case, which still needs a hint rather than
         // silently falling back to just the bare prefix with no hint at all.
         manager.commandSyntaxFormatter((sender, knownComponents, node) -> {
-            String known = knownComponents.stream()
-                    .filter(component -> component.type() == CommandComponent.ComponentType.LITERAL)
-                    .map(CommandComponent::name)
-                    .collect(Collectors.joining(" "));
-            return "/" + (known.isEmpty() ? "" : known + " ") + "<type> [args]";
+            String known = literalPrefix(knownComponents);
+            return "/" + (known.isEmpty() ? "" : known + " ") + SYNTAX_ARGUMENT_SUFFIX;
         });
 
         manager.exceptionController().registerHandler(InvalidSyntaxException.class, ctx -> {
             CommandSender sender = ctx.context().sender();
+            // "usage" is the full hint ("/growth summary <type> [args]") shown on the visible
+            // line and on hover. "command" is just the literal chain it was built from, with a
+            // trailing space ("/growth summary ") - what suggest_command actually inserts, so
+            // clicking leaves the sender ready to type their own argument instead of also
+            // having to delete a literal "<type> [args]" first.
+            //
+            // Derived by stripping SYNTAX_ARGUMENT_SUFFIX back off "usage" itself, not by
+            // recomputing independently from ctx.exception().currentChain() - that list can
+            // legitimately differ from what commandSyntaxFormatter above actually used to build
+            // "usage" (e.g. at a branching node with no literal committed yet, currentChain() can
+            // still surface one specific candidate child's components, which isn't the same thing
+            // as "the sender typed this"). Stripping the known, constant suffix off the one string
+            // the formatter actually produced is the only way to guarantee the two stay in sync.
             String syntax = ctx.exception().correctSyntax();
-            // MiniMessage can't resolve a placeholder nested inside another tag's own
-            // argument (<click:suggest_command:'<syntax>'> would leave "<syntax>" as
-            // literal text) - the whole <click>...</click> fragment has to be built here
-            // and handed through as RawMarkup so it's re-parsed as markup, not escaped text.
-            String usageMarkup = "<click:suggest_command:'" + syntax.replace("'", "\\'") + "'>" + syntax + "</click>";
-            FlectoneGrowthMessages.send(core, sender, "command.invalid-syntax",
-                    Map.of("usage", new Messages.RawMarkup(usageMarkup)));
+            String command = syntax.endsWith(SYNTAX_ARGUMENT_SUFFIX)
+                    ? syntax.substring(0, syntax.length() - SYNTAX_ARGUMENT_SUFFIX.length())
+                    : syntax;
+            // <click:suggest_command:'...'> in command.invalid-syntax's own localization
+            // template needs "command" inlined as literal text before parsing (Messages.
+            // TemplateText) - a plain placeholder can never resolve inside another tag's own
+            // quoted argument (see that record's javadoc). "usage" has no such requirement -
+            // it only ever appears in ordinary content, so a normal placeholder is enough.
+            FlectoneGrowthMessages.send(core, sender, "command.invalid-syntax", Map.of(
+                    "usage", syntax,
+                    "command", new Messages.TemplateText(command)));
         });
         // Without this, a sender lacking the command's @Permission got no feedback at all -
         // Cloud's ExecutionCoordinator has no built-in default for this exception type either.
@@ -122,6 +139,14 @@ public final class CommandRegistry {
         parser.parse(new GrowthCommand(plugin, core));
         parser.parse(new PluginAdminCommand(plugin));
         parser.parse(new MigrateCommand(plugin, core));
+    }
+
+    /** Every LITERAL component's name, space-joined - the part of a command chain that's never a value a sender types (a subcommand name), used both for the generic syntax hint and for the click-to-insert target (see the two call sites above). */
+    private static String literalPrefix(List<? extends CommandComponent<?>> components) {
+        return components.stream()
+                .filter(component -> component.type() == CommandComponent.ComponentType.LITERAL)
+                .map(CommandComponent::name)
+                .collect(Collectors.joining(" "));
     }
 
     private static List<String> heightSuggestions(FlectoneGrowthCore core) {

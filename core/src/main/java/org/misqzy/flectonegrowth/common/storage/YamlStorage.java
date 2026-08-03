@@ -334,13 +334,33 @@ public final class YamlStorage implements Storage {
     // alongside the sections above)
     // -----------------------------------------------------------------------
 
+    /**
+     * Minecraft usernames aren't permanently tied to a uuid - Mojang lets a
+     * player rename, and whoever's entry still carries their old name would
+     * otherwise sit there indefinitely as a second, stale claim on it (this
+     * class never deletes a player entry). With two entries both matching a
+     * name, {@link #findUuidByUsername} would have no way to prefer the
+     * actual current owner over whoever used to go by that name - so any
+     * other entry currently claiming {@code username} gets cleared first,
+     * before this uuid claims it. Mirrors the same fix on the SQL backends.
+     */
     @Override
+    @SuppressWarnings("unchecked")
     public boolean upsertUsername(UUID uuid, String username) {
         lock.writeLock().lock();
         try {
+            String key = uuid.toString();
+            for (Map.Entry<String, Object> e : section("players").entrySet()) {
+                if (e.getKey().equals(key) || !(e.getValue() instanceof Map<?, ?> other)) continue;
+                Object v = other.get("username");
+                if (v != null && String.valueOf(v).equalsIgnoreCase(username)) {
+                    ((Map<String, Object>) other).put("username", null);
+                }
+            }
+
             Map<String, Object> entry = newEntry();
             entry.put("username", username);
-            section("players").put(uuid.toString(), entry);
+            section("players").put(key, entry);
             persist();
             return true;
         } catch (IOException e) {

@@ -6,9 +6,19 @@ public final class TimeFormatter {
 
     private TimeFormatter() {}
 
-    /** A short wall-clock duration as {@code x.nnnUOM}, e.g. {@code 0.042s} for 42ms - always seconds, so admin-facing timings (like a reload) read as one consistent decimal instead of jumping between "512ms" and "1.3s". */
-    public static String formatMillis(long millis) {
-        return String.format(Locale.US, "%.3fs", millis / 1000.0);
+    /**
+     * A short wall-clock duration as {@code x.nnn<unit>}, e.g. {@code 0.042s}
+     * for 42ms in English - always seconds, so admin-facing timings (like a
+     * reload) read as one consistent decimal instead of jumping between
+     * "512ms" and "1.3s". The decimal itself is always formatted with
+     * {@link Locale#US} (so the separator is always {@code .}, never a
+     * locale-dependent {@code ,}) - only the unit label ({@code time.seconds})
+     * comes from {@code locale}.
+     *
+     * @param locale a specific recipient's locale, or {@code null} for {@code messages}' configured default - see {@link Messages#raw(String, String)}.
+     */
+    public static String formatMillis(long millis, Messages messages, String locale) {
+        return String.format(Locale.US, "%.3f", millis / 1000.0) + messages.raw(locale, "time.seconds");
     }
 
     /** Renders in {@code messages}' configured default locale - see {@link #format(long, Messages, String)} for a specific recipient's own locale. */

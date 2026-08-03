@@ -2,7 +2,12 @@ package org.misqzy.flectonegrowth.bukkit;
 
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.Style;
+import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.command.CommandSender;
@@ -14,85 +19,134 @@ import org.bukkit.command.CommandSender;
  * work on the lowest common denominator by default.
  *
  * <p><b>Native Adventure delivery (the Paper-only optimization).</b> Before
- * falling back to legacy serialization, {@link #send} checks whether the
+ * falling back to the conversion below, {@link #send} checks whether the
  * runtime {@code CommandSender} implements Adventure's {@link Audience} -
  * true for Paper/Purpur's own {@code CommandSender} implementation, false
  * for plain Spigot/CraftBukkit's. This needs no {@code paper-api} dependency
  * at all: {@code Audience} lives in {@code adventure-api}, already a
  * dependency here for MiniMessage, not in {@code paper-api}. When it's
  * available, {@code audience.sendMessage(component)} sends the real
- * {@link Component} directly - no serialization round-trip, and unlike the
- * legacy path below, hover/click events and true RGB survive intact. This is
- * "Bukkit as the core, Paper only for optimizations" applied to message
- * delivery: one code path, capability-detected at runtime, rather than a
- * second module.</p>
+ * {@link Component} directly - no conversion at all, and (same as the
+ * fallback below) hover/click events and true RGB survive intact.</p>
  *
- * <p><b>Legacy fallback (the Bukkit-API baseline).</b> Vanilla Spigot/
+ * <p><b>Fallback conversion (the Bukkit-API baseline).</b> Vanilla Spigot/
  * CraftBukkit's {@code CommandSender} has no {@code sendMessage(Component)}
- * overload and isn't an {@code Audience}, so the message is serialised to a
- * legacy {@code §}-formatted string first. See the dependency comment in
- * {@code build.gradle.kts} for why this is used instead of
- * {@code adventure-platform-bukkit}.
+ * overload and isn't an {@code Audience}, so the {@link Component} is walked
+ * and rebuilt as a BungeeCord {@link BaseComponent} tree instead - the format
+ * {@code CommandSender#spigot().sendMessage(BaseComponent...)} accepts, which
+ * every Bukkit implementation has always had.</p>
  *
- * <p>Sends through {@code CommandSender#spigot().sendMessage(BaseComponent...)}
- * rather than the plain {@code sendMessage(String)} overload -
- * CraftBukkit's {@code String} path (via {@code CraftChatMessage.fromString})
- * splits on every {@code \n} and sends each line as its own chat packet, so
- * a multi-line message (e.g. {@code command.invalid-syntax}) arrived as
- * several separate chat entries instead of one message with line breaks.
- * The {@code BaseComponent[]} path sends the whole thing as a single packet
- * regardless of embedded newlines - the same guarantee the native-Adventure
- * path above already gets for free. {@code bungeecord-chat}'s
- * {@code TextComponent}/{@code BaseComponent} come transitively from
- * {@code spigot-api}, already a dependency here, so this needs no new
- * library.</p>
+ * <p>This used to go through {@code adventure-text-serializer-legacy} (to a
+ * {@code §}-formatted string) then {@code TextComponent.fromLegacyText}
+ * (back into a {@code BaseComponent[]}) - a real live-deploy regression once
+ * this plugin started sending clickable/hoverable text
+ * ({@code command.invalid-syntax}'s {@code <click:suggest_command:...>}):
+ * a legacy string has no representation for hover/click at all, so both
+ * silently vanished for every sender on this fallback path (i.e. every
+ * non-Paper server, this module's own stated baseline). Converting the
+ * {@link Component} tree directly, node by node, keeps them intact -
+ * verified end-to-end with a standalone harness (color, decorations, click,
+ * hover, and a real {@code <gradient>} - the last one being the exact case
+ * the old string round-trip existed to get right in the first place, per its
+ * own history below - all came through correctly).</p>
  *
- * <p>{@code SERIALIZER} is built with {@code .hexColors()} +
- * {@code .useUnusualXRepeatedCharacterHexFormat()}, not the plain
- * {@code LegacyComponentSerializer.legacySection()} preset - a real
- * live-deploy bug: the plain preset only emits the 16 basic legacy colors,
- * so a gradient (e.g. FlectonePulse's {@code <fcolor:N>} palette, all
- * varying shades of light blue) had every character independently rounded
- * to the *same* nearest legacy color, collapsing the whole gradient into a
- * single flat aqua - reported as "one-colored message, not a gradient" from
- * a real server. {@code hexColors()} alone emits the newer, compact
- * {@code §#RRGGBB} form, which {@code TextComponent.fromLegacyText} below
- * doesn't understand (verified empirically: it fell through to literal
- * text, no color at all) - {@code useUnusualXRepeatedCharacterHexFormat()}
- * switches to the older {@code §x§R§R§G§G§B§B} form BungeeCord's own parser
- * actually recognises. Verified end-to-end with a standalone harness: a
- * gradient round-tripped through this exact serializer + parser combination
- * came back with one distinct RGB color per character, not one flat color
- * for the whole span. This path is now only reached on servers whose
- * {@code CommandSender} isn't an {@code Audience} (plain Spigot/CraftBukkit),
- * so it remains load-bearing rather than dead code.</p>
+ * <p>Adventure never eagerly resolves a child's color/decorations onto that
+ * child - an unset attribute is left {@code null}/{@code NOT_SET}, meaning
+ * "inherit from the parent at render time" (verified empirically: a
+ * MiniMessage-parsed {@code <primary>hello <bold>world</bold>}'s "world"
+ * child has {@code style().color() == null}, not the resolved color).
+ * BungeeCord's {@code BaseComponent} tree uses the exact same convention
+ * (it <i>is</i> Minecraft's own JSON chat component format, where an
+ * {@code extra} entry inherits whatever its parent doesn't override) - so
+ * {@link #convert} only ever calls a setter when the source node's own style
+ * actually has that attribute, and lets the client resolve inheritance the
+ * same way it always does for vanilla JSON components. No manual style-
+ * flattening needed.</p>
+ *
+ * <p>Only {@code click}'s text-based actions (open URL/run/suggest command,
+ * copy to clipboard) and {@code hover}'s {@code show_text} are converted -
+ * the only ones this plugin actually produces today. {@code change_page},
+ * {@code show_item}/{@code show_entity}, and anything {@code custom}/
+ * {@code show_dialog} are silently dropped rather than guessed at; add a
+ * case to {@link #bungeeClickAction}/{@link #applyHover} if a future message
+ * ever needs one.</p>
  */
+// The whole net.md_5.bungee.api.chat package (ClickEvent/HoverEvent/TextComponent's
+// constructors used below) is soft-deprecated in favour of kyori Adventure - but
+// there's no Adventure-based replacement reachable from vanilla CraftBukkit's
+// CommandSender, which is exactly why this class exists. Deliberate, not an oversight.
+@SuppressWarnings("deprecation")
 public final class LegacyText {
-
-    private static final LegacyComponentSerializer SERIALIZER = LegacyComponentSerializer.builder()
-            .character('§')
-            .hexColors()
-            .useUnusualXRepeatedCharacterHexFormat()
-            .build();
 
     private LegacyText() {}
 
-    // TextComponent.fromLegacyText is deprecated in bungeecord-chat (the whole
-    // net.md_5.bungee.api.chat package is soft-deprecated in favour of kyori
-    // Adventure) - but there's no Adventure-based replacement reachable from
-    // vanilla CraftBukkit's CommandSender, which is exactly why this class
-    // exists. Verified there's no non-deprecated overload for this
-    // conversion (javap against the actual bungeecord-chat jar this project
-    // resolves): both fromLegacyText(String) and fromLegacyText(String,
-    // ChatColor) carry @Deprecated. Deliberate, not an oversight.
-    @SuppressWarnings("deprecation")
     public static void send(CommandSender sender, Component component) {
         if (sender instanceof Audience audience) {
             audience.sendMessage(component);
             return;
         }
 
-        BaseComponent[] parts = TextComponent.fromLegacyText(SERIALIZER.serialize(component));
-        sender.spigot().sendMessage(parts);
+        sender.spigot().sendMessage(toBungee(component));
+    }
+
+    private static BaseComponent[] toBungee(Component component) {
+        return new BaseComponent[]{convert(component)};
+    }
+
+    private static BaseComponent convert(Component component) {
+        TextComponent bungee = new TextComponent(
+                component instanceof net.kyori.adventure.text.TextComponent text ? text.content() : "");
+        applyStyle(bungee, component.style());
+        applyClick(bungee, component);
+        applyHover(bungee, component);
+        for (Component child : component.children()) {
+            bungee.addExtra(convert(child));
+        }
+        return bungee;
+    }
+
+    /** {@code hexColors()}/{@code .of(String)} - not the 16 basic legacy colors - so a gradient (or any other true-RGB color) doesn't get flattened to the nearest one, the exact bug this class's history documents against the old string-based path. */
+    private static void applyStyle(BaseComponent bungee, Style style) {
+        TextColor color = style.color();
+        if (color != null) bungee.setColor(ChatColor.of(color.asHexString()));
+        bungee.setBold(decorationState(style, TextDecoration.BOLD));
+        bungee.setItalic(decorationState(style, TextDecoration.ITALIC));
+        bungee.setUnderlined(decorationState(style, TextDecoration.UNDERLINED));
+        bungee.setStrikethrough(decorationState(style, TextDecoration.STRIKETHROUGH));
+        bungee.setObfuscated(decorationState(style, TextDecoration.OBFUSCATED));
+    }
+
+    /** {@code null} (BungeeCord's own "inherit" value) for {@code NOT_SET} - see the class javadoc on why this class never flattens inheritance itself. */
+    private static Boolean decorationState(Style style, TextDecoration decoration) {
+        return switch (style.decoration(decoration)) {
+            case TRUE -> Boolean.TRUE;
+            case FALSE -> Boolean.FALSE;
+            case NOT_SET -> null;
+        };
+    }
+
+    private static void applyClick(BaseComponent bungee, Component component) {
+        ClickEvent<?> click = component.clickEvent();
+        if (click == null) return;
+        if (!(click.payload() instanceof ClickEvent.Payload.Text text)) return;
+        net.md_5.bungee.api.chat.ClickEvent.Action bungeeAction = bungeeClickAction(click.action());
+        if (bungeeAction == null) return;
+        bungee.setClickEvent(new net.md_5.bungee.api.chat.ClickEvent(bungeeAction, text.value()));
+    }
+
+    private static net.md_5.bungee.api.chat.ClickEvent.Action bungeeClickAction(ClickEvent.Action<?> action) {
+        if (action == ClickEvent.Action.OPEN_URL) return net.md_5.bungee.api.chat.ClickEvent.Action.OPEN_URL;
+        if (action == ClickEvent.Action.RUN_COMMAND) return net.md_5.bungee.api.chat.ClickEvent.Action.RUN_COMMAND;
+        if (action == ClickEvent.Action.SUGGEST_COMMAND) return net.md_5.bungee.api.chat.ClickEvent.Action.SUGGEST_COMMAND;
+        if (action == ClickEvent.Action.COPY_TO_CLIPBOARD) return net.md_5.bungee.api.chat.ClickEvent.Action.COPY_TO_CLIPBOARD;
+        return null;
+    }
+
+    private static void applyHover(BaseComponent bungee, Component component) {
+        HoverEvent<?> hover = component.hoverEvent();
+        if (hover == null || hover.action() != HoverEvent.Action.SHOW_TEXT) return;
+        Component hoverText = (Component) hover.value();
+        bungee.setHoverEvent(new net.md_5.bungee.api.chat.HoverEvent(
+                net.md_5.bungee.api.chat.HoverEvent.Action.SHOW_TEXT, toBungee(hoverText)));
     }
 }

@@ -327,16 +327,37 @@ public abstract class AbstractSqlStorage implements Storage {
         }
     }
 
+    /**
+     * Minecraft usernames aren't permanently tied to a uuid - Mojang lets a
+     * player rename, and whoever's row still carries their old name would
+     * otherwise sit there indefinitely as a second, stale claim on it (this
+     * class never deletes a player row). With two rows both matching a name,
+     * {@link #findUuidByUsername} would have no way to prefer the actual
+     * current owner over whoever used to go by that name - so any other
+     * row currently claiming {@code username} gets cleared to {@code NULL}
+     * first, before this uuid claims it.
+     */
     @Override
     public boolean upsertUsername(UUID uuid, String username) {
-        return SqlOps.update(dataSource,
-                "INSERT INTO " + tables.player() + " (uuid, username) VALUES (?, ?) " +
-                        "ON DUPLICATE KEY UPDATE username = VALUES(username)",
-                stmt -> {
-                    stmt.setString(1, uuid.toString());
-                    stmt.setString(2, username);
-                },
-                logger, storageName(), "upsertUsername");
+        try (Connection conn = dataSource.getConnection()) {
+            try (PreparedStatement clearStale = conn.prepareStatement(
+                    "UPDATE " + tables.player() + " SET username = NULL WHERE LOWER(username) = LOWER(?) AND uuid <> ?")) {
+                clearStale.setString(1, username);
+                clearStale.setString(2, uuid.toString());
+                clearStale.executeUpdate();
+            }
+            try (PreparedStatement upsert = conn.prepareStatement(
+                    "INSERT INTO " + tables.player() + " (uuid, username) VALUES (?, ?) " +
+                            "ON DUPLICATE KEY UPDATE username = VALUES(username)")) {
+                upsert.setString(1, uuid.toString());
+                upsert.setString(2, username);
+                upsert.executeUpdate();
+            }
+            return true;
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, storageName() + " upsertUsername: " + e.getMessage(), e);
+            return false;
+        }
     }
 
     @Override

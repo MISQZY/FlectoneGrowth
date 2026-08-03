@@ -159,7 +159,8 @@ public final class Messages {
     }
 
     public Component get(String locale, String key, Map<String, Object> placeholders) {
-        return MINI.deserialize(stripClosingTags(raw(locale, key)), themeResolvers(), buildResolver(placeholders));
+        String raw = inlineTemplateText(raw(locale, key), placeholders);
+        return MINI.deserialize(stripClosingTags(raw), themeResolvers(), buildResolver(placeholders));
     }
 
     public Component get(String key) {
@@ -179,23 +180,23 @@ public final class Messages {
     }
 
     /**
-     * The closing-tag-stripped raw MiniMessage string for {@code key} -
-     * exactly what {@link #get(String, Map)} would hand to its own
-     * {@code MiniMessage.deserialize}, exposed so a platform module can
-     * instead hand it to FlectonePulse's own {@code MessagePipeline.build}
-     * when routing a message through FlectonePulse (see that module's
-     * {@code FlectonePulseMessageDispatcher}). {@code <fcolor:N>} is
-     * deliberately left unresolved here - FlectonePulse resolves that tag
-     * itself as part of its own pipeline, the whole reason for going through
-     * it in the first place, so this class must not race it with its own
-     * resolution first.
+     * The closing-tag-stripped, {@link TemplateText}-inlined raw MiniMessage
+     * string for {@code key} - exactly what {@link #get(String, Map)} would
+     * hand to its own {@code MiniMessage.deserialize}, exposed so a platform
+     * module can instead hand it to FlectonePulse's own
+     * {@code MessagePipeline.build} when routing a message through
+     * FlectonePulse (see that module's {@code FlectonePulseMessageDispatcher}).
+     * {@code <fcolor:N>} is deliberately left unresolved here - FlectonePulse
+     * resolves that tag itself as part of its own pipeline, the whole reason
+     * for going through it in the first place, so this class must not race
+     * it with its own resolution first.
      */
-    public String rawForDispatch(String key) {
-        return rawForDispatch(defaultLocale, key);
+    public String rawForDispatch(String key, Map<String, Object> placeholders) {
+        return rawForDispatch(defaultLocale, key, placeholders);
     }
 
-    public String rawForDispatch(String locale, String key) {
-        return stripClosingTags(raw(locale, key));
+    public String rawForDispatch(String locale, String key, Map<String, Object> placeholders) {
+        return stripClosingTags(inlineTemplateText(raw(locale, key), placeholders));
     }
 
     /**
@@ -248,29 +249,68 @@ public final class Messages {
     }
 
     /**
-     * A placeholder value that should be re-parsed as MiniMessage markup
-     * ({@link Placeholder#parsed}) instead of inserted as literal text
-     * ({@link Placeholder#unparsed}) - for a caller building real MiniMessage
-     * tags (e.g. {@code <click:suggest_command:'...'>}) around a piece of
-     * dynamic text. Not achievable by nesting another placeholder inside a
-     * tag's own argument (verified with a standalone harness:
-     * {@code <click:suggest_command:'<command>'>} leaves the argument as the
-     * literal, unresolved text {@code "<command>"} instead of substituting
-     * it) - the caller must build the whole tag, argument included, into one
-     * string ahead of time.
+     * A placeholder value that must be inlined as literal, tag-escaped text
+     * directly into the raw message string <b>before</b> MiniMessage parses
+     * it, rather than resolved via a {@link TagResolver} during parsing -
+     * the only way to make a value reachable <b>inside another tag's own
+     * quoted argument</b> (e.g. {@code <click:suggest_command:'/<usage>'>}
+     * or {@code <hover:show_text:'...<usage>'>}): MiniMessage tokenizes a
+     * tag's argument as a literal string up front and never recurses into it
+     * to resolve a nested tag or placeholder (verified with a standalone
+     * harness - {@code <click:suggest_command:'<command>'>} leaves the
+     * argument as the literal, unresolved text {@code "<command>"}). Ported
+     * from studying FlectonePulse's own localization templates, which embed
+     * {@code <click>}/{@code <hover>} directly around a placeholder the same
+     * way - the templates write the tags themselves, this class just needs
+     * to make the substitution happen at the right stage.
+     *
+     * <p>Escaped via {@link MiniMessage#escapeTags(String, TagResolver)}
+     * against this class's own {@link #themeResolvers()} - not the
+     * no-args overload, which only knows MiniMessage's standard built-in
+     * tags and would let a value containing a literal {@code <primary>}/
+     * {@code <secondary>}/{@code <fcolor:N>} slip through unescaped (verified
+     * empirically: the no-args overload leaves any tag name it doesn't
+     * recognize completely untouched, including ours). Plus a defensive
+     * single-quote escape, since by convention every tag argument in this
+     * project's templates is {@code '...'}-quoted - so a value containing
+     * {@code <}/{@code >} (e.g. a Cloud command's own {@code <type>}
+     * argument placeholder in a corrected-syntax string) can't be misparsed
+     * as a tag once inlined as plain content, and can't prematurely close
+     * the argument it's inlined into.</p>
+     *
+     * <p>One accepted gap: inside another tag's own quoted argument (e.g.
+     * {@code suggest_command}'s target), that argument is taken as a fully
+     * literal string with no escape processing of its own, so if escaping
+     * ever did insert a backslash there (only possible if the inlined value
+     * genuinely collided with a real tag name), the argument would carry a
+     * stray backslash the plain-content occurrence of the same value
+     * wouldn't. Not worth splitting the substitution by context for - every
+     * caller today inlines a Cloud command's own literal/argument names,
+     * which are developer-chosen and never collide with a real tag name.</p>
      */
-    public record RawMarkup(String value) {}
+    public record TemplateText(String value) {}
 
-    /** Placeholder values are usually stringified ({@link Placeholder#unparsed}), but a caller can pass a {@link RawMarkup} to have it re-parsed as MiniMessage markup instead ({@link Placeholder#parsed}). */
+    /** Inlines every {@link TemplateText} placeholder into {@code raw} by literal, escaped string substitution - see that record's javadoc for why this has to happen before parsing instead of via a {@link TagResolver}. Every other placeholder type is left untouched here; {@link #buildResolver} handles those during parsing as usual. */
+    private String inlineTemplateText(String raw, Map<String, Object> placeholders) {
+        if (placeholders == null || placeholders.isEmpty()) return raw;
+        String result = raw;
+        for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
+            if (entry.getValue() instanceof TemplateText text) {
+                String escaped = MINI.escapeTags(text.value(), themeResolvers()).replace("'", "\\'");
+                result = result.replace("<" + entry.getKey() + ">", escaped);
+            }
+        }
+        return result;
+    }
+
+    /** Placeholder values are usually stringified ({@link Placeholder#unparsed}); a {@link TemplateText} is skipped here since {@link #inlineTemplateText} already substituted it directly into the raw string before this resolver is ever consulted. */
     private static TagResolver buildResolver(Map<String, Object> placeholders) {
         if (placeholders == null || placeholders.isEmpty()) return TagResolver.empty();
         TagResolver.Builder builder = TagResolver.builder();
         for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
             Object value = entry.getValue();
-            TagResolver resolver = value instanceof RawMarkup markup
-                    ? Placeholder.parsed(entry.getKey(), markup.value())
-                    : Placeholder.unparsed(entry.getKey(), String.valueOf(value));
-            builder.resolver(resolver);
+            if (value instanceof TemplateText) continue;
+            builder.resolver(Placeholder.unparsed(entry.getKey(), String.valueOf(value)));
         }
         return builder.build();
     }

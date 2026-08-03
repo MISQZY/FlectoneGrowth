@@ -18,7 +18,7 @@ command:
   invalid-syntax: |-
     <secondary>|</secondary>
     <secondary>|</secondary> <secondary>Usage →</secondary>
-    <secondary>|</secondary> <primary><usage></primary>
+    <secondary>|</secondary> <hover:show_text:'<secondary>Use <br><primary><usage>'><click:suggest_command:'<command>'><primary><usage></click></hover>
     <secondary>|</secondary>
 
 height:

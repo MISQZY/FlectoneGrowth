@@ -364,15 +364,27 @@ public final class H2Storage implements Storage {
         }
     }
 
+    /** See {@code AbstractSqlStorage}'s twin for why any other row currently claiming {@code username} gets cleared first - a Mojang rename otherwise leaves a stale second claim on it forever, ambiguous for {@link #findUuidByUsername}. */
     @Override
     public boolean upsertUsername(UUID uuid, String username) {
-        return SqlOps.update(dataSource,
-                "MERGE INTO " + tables.player() + " (uuid, username) KEY(uuid) VALUES (?, ?)",
-                stmt -> {
-                    stmt.setString(1, uuid.toString());
-                    stmt.setString(2, username);
-                },
-                logger, "H2", "upsertUsername");
+        try (Connection conn = dataSource.getConnection()) {
+            try (PreparedStatement clearStale = conn.prepareStatement(
+                    "UPDATE " + tables.player() + " SET username = NULL WHERE LOWER(username) = LOWER(?) AND uuid <> ?")) {
+                clearStale.setString(1, username);
+                clearStale.setString(2, uuid.toString());
+                clearStale.executeUpdate();
+            }
+            try (PreparedStatement merge = conn.prepareStatement(
+                    "MERGE INTO " + tables.player() + " (uuid, username) KEY(uuid) VALUES (?, ?)")) {
+                merge.setString(1, uuid.toString());
+                merge.setString(2, username);
+                merge.executeUpdate();
+            }
+            return true;
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "H2 upsertUsername: " + e.getMessage(), e);
+            return false;
+        }
     }
 
     @Override

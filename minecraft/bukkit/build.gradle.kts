@@ -42,18 +42,21 @@ dependencies {
     // Vanilla Spigot/CraftBukkit does not bundle kyori Adventure, and its
     // CommandSender doesn't implement Audience the way Paper's does - see
     // LegacyText's runtime capability check, which uses native Adventure
-    // delivery when available and falls back to legacy serialization
-    // otherwise. Rather than pull in net.kyori:adventure-platform-bukkit as
-    // a bridge for the fallback path (its 4.4.1 release pins adventure-api
-    // 4.21.0, which conflicts with the 5.2.0 this project already depends
-    // on via core - verified live against its published pom.xml, not
-    // assumed), the fallback serialises to legacy formatted strings (same
-    // adventure-api major version, no bridge needed) and sends via
-    // CommandSender#spigot().sendMessage(BaseComponent...), which every
-    // Bukkit implementation has always had.
+    // delivery when available and hand-converts to a BungeeCord
+    // BaseComponent tree otherwise (bungeecord-chat comes transitively via
+    // spigot-api above, no separate dependency needed). Not
+    // net.kyori:adventure-platform-bukkit or adventure-text-serializer-
+    // bungeecord as a ready-made bridge for that fallback: both are part of
+    // the same adventure-platform release train, still pinned to
+    // adventure-api 4.21.0 with no 5.x-compatible release as of writing
+    // (verified live against their published pom.xml - adventure-text-
+    // serializer-bungeecord's own transitive graph even needs an
+    // adventure-text-serializer-*-legacy-impl module that plainly has no
+    // 5.x release at all) - conflicts with the 5.2.0 this project already
+    // depends on via core, the same reasoning LegacyText's own class
+    // javadoc documents for why it hand-rolls this conversion instead.
     implementation("net.kyori:adventure-api:${project.findProperty("adventureVersion")}")
     implementation("net.kyori:adventure-text-minimessage:${project.findProperty("adventureVersion")}")
-    implementation("net.kyori:adventure-text-serializer-legacy:${project.findProperty("adventureVersion")}")
 
     implementation("com.google.inject:guice:${project.findProperty("guiceVersion")}")
     implementation("org.yaml:snakeyaml:${project.findProperty("snakeyamlVersion")}")
