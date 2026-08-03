@@ -17,7 +17,7 @@ public final class PluginAdminCommand {
 
     private final FlectoneGrowthPlugin plugin;
 
-    @Command("flectonegrowth|pg reload")
+    @Command("flectonegrowth|fg reload")
     @CommandDescription("Reload the FlectoneGrowth configuration.")
     @Permission("flectonegrowth.admin.reload")
     public void reload(CommandSender sender) {

@@ -1,12 +1,13 @@
 package org.misqzy.flectonegrowth.bukkit.command;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.event.ClickEvent;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.SenderMapper;
 import org.incendo.cloud.annotations.AnnotationParser;
 import org.incendo.cloud.bukkit.BukkitCommandManager;
+import org.incendo.cloud.component.CommandComponent;
+import org.incendo.cloud.exception.CommandExecutionException;
 import org.incendo.cloud.exception.InvalidSyntaxException;
+import org.incendo.cloud.exception.NoPermissionException;
 import org.incendo.cloud.execution.ExecutionCoordinator;
 import org.incendo.cloud.suggestion.SuggestionProvider;
 import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages;
@@ -19,6 +20,8 @@ import org.misqzy.flectonegrowth.common.service.ScaleMath;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
 
 /**
  * Wires every command class through one {@link BukkitCommandManager}.
@@ -40,6 +43,9 @@ import java.util.Map;
  */
 public final class CommandRegistry {
 
+    /** Number of evenly-spaced height suggestions offered between min and max scale (min, max, and this many steps in between). */
+    private static final int HEIGHT_SUGGESTION_STEPS = 4;
+
     private final BukkitCommandManager<CommandSender> manager;
 
     public CommandRegistry(FlectoneGrowthPlugin plugin, FlectoneGrowthCore core) {
@@ -55,18 +61,52 @@ public final class CommandRegistry {
         manager.parserRegistry().registerSuggestionProvider("gender-types",
                 SuggestionProvider.blockingStrings((context, input) -> genderSuggestions(core)));
 
+        // Cloud's default StandardCommandSyntaxFormatter spells out every sibling
+        // literal at a branching node (e.g. "fg reload|migrate playtime", "growth
+        // summary|height|gender [target]") - correct, but exposes implementation
+        // detail (subcommand names, including admin-only ones a sender may not even
+        // have permission for) a player mistyping a command doesn't need. Collapsing
+        // it to a generic "/<already-typed literals> <type> [args]" keeps the hint
+        // useful (still shows the literal chain typed correctly so far) without
+        // enumerating options.
+        //
+        // Only LITERAL knownComponents are kept in that prefix - a successfully
+        // parsed argument component (e.g. height's own value argument, itself named
+        // "type" to match this generic wording) would otherwise get echoed by name
+        // right next to the generic "<type>" suffix below, producing a confusing
+        // "height type <type> [args]" for something as simple as trailing garbage
+        // after an otherwise-valid "/height 1.85 x".
+        //
+        // The suffix is always appended, regardless of whether the failure node is
+        // a leaf - Cloud also reaches a leaf node (one with no further children) for
+        // that same trailing-garbage case, which still needs a hint rather than
+        // silently falling back to just the bare prefix with no hint at all.
+        manager.commandSyntaxFormatter((sender, knownComponents, node) -> {
+            String known = knownComponents.stream()
+                    .filter(component -> component.type() == CommandComponent.ComponentType.LITERAL)
+                    .map(CommandComponent::name)
+                    .collect(Collectors.joining(" "));
+            return "/" + (known.isEmpty() ? "" : known + " ") + "<type> [args]";
+        });
+
         manager.exceptionController().registerHandler(InvalidSyntaxException.class, ctx -> {
             CommandSender sender = ctx.context().sender();
-            // HelpCommand's hand-maintained list, not Cloud's own auto-generated
-            // correctSyntax() - that walks the whole branching command tree from
-            // the failure point and can mash multiple literal/argument
-            // alternatives into one confusing string. Falls back to pointing at
-            // /flectonegrowth help when the matched literal chain doesn't
-            // uniquely identify one entry, rather than guessing.
-            Component syntax = HelpCommand.syntaxFor(sender, ctx.exception().currentChain())
-                    .orElseGet(() -> Component.text("/flectonegrowth help")
-                            .clickEvent(ClickEvent.suggestCommand("/flectonegrowth help")));
-            FlectoneGrowthMessages.send(core, sender, "command.invalid-syntax", Map.of("syntax", syntax));
+            FlectoneGrowthMessages.send(core, sender, "command.invalid-syntax",
+                    Map.of("syntax", ctx.exception().correctSyntax()));
+        });
+        // Without this, a sender lacking the command's @Permission got no feedback at all -
+        // Cloud's ExecutionCoordinator has no built-in default for this exception type either.
+        manager.exceptionController().registerHandler(NoPermissionException.class, ctx ->
+                FlectoneGrowthMessages.send(core, ctx.context().sender(), "command.no-permission"));
+        // A bug inside a command handler (an unchecked exception thrown while executing, as
+        // opposed to a parse-time failure) would otherwise also vanish silently from the
+        // sender's perspective - only ever visible as a stack trace on the console, if that.
+        // Logging it here too means it's not solely dependent on whoever's watching the console
+        // at that moment to ever notice a command is broken.
+        manager.exceptionController().registerHandler(CommandExecutionException.class, ctx -> {
+            plugin.getLogger().log(Level.SEVERE,
+                    "Unhandled exception executing a FlectoneGrowth command", ctx.exception().getCause());
+            FlectoneGrowthMessages.send(core, ctx.context().sender(), "command.error");
         });
 
         AnnotationParser<CommandSender> parser = new AnnotationParser<>(manager, CommandSender.class);
@@ -74,7 +114,7 @@ public final class CommandRegistry {
         parser.parse(new GenderCommand(core));
         parser.parse(new GrowthCommand(core));
         parser.parse(new PluginAdminCommand(plugin));
-        parser.parse(new HelpCommand(core));
+        parser.parse(new MigrateCommand(plugin, core));
     }
 
     private static List<String> heightSuggestions(FlectoneGrowthCore core) {
@@ -83,8 +123,8 @@ public final class CommandRegistry {
         double max = core.config().maxScale();
 
         List<String> values = new ArrayList<>();
-        double step = (max - min) / 4.0;
-        for (int i = 0; i <= 4; i++) {
+        double step = (max - min) / HEIGHT_SUGGESTION_STEPS;
+        for (int i = 0; i <= HEIGHT_SUGGESTION_STEPS; i++) {
             values.add(ScaleMath.formatValue(min + step * i));
         }
         return values;

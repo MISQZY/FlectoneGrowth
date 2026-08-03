@@ -1,7 +1,30 @@
-# FlectoneGrowth — Release Notes (v0.1.1 → v0.2.4)
+# FlectoneGrowth — Release Notes (v0.1.1 → v0.2.5)
 
 A summary of everything new for players and server owners since v0.1.1,
 newest first.
+
+---
+
+## v0.2.5
+
+- **New `/flectonegrowth migrate playtime` admin command** (alias
+  `/fg migrate playtime`). Imports every known player's vanilla playtime
+  statistic into FlectoneGrowth's own tracking, adding to any existing
+  record rather than overwriting it - useful when turning
+  `network.sync-enabled` on for an existing install. Runs off the main
+  thread and reloads already-online players' growth state afterward.
+- **Clearer, more consistent syntax hints on a mistyped command.** Instead
+  of enumerating every possible subcommand (including admin-only ones you
+  may not even have permission for), a mistyped command now shows a short
+  generic hint like `/height <type> [args]`.
+- **You now get feedback when a command fails**, instead of nothing
+  happening: a permission-denied attempt and an unexpected internal error
+  both now show a message (the internal-error case is also logged on the
+  console with full detail for an admin to check).
+- `/flectonegrowth reload`'s short alias is now `/fg` (was `/pg`).
+- `/flectonegrowth help` has been removed - command syntax is now shown
+  inline whenever you mistype one, instead of needing a separate command
+  to look it up.
 
 ---
 

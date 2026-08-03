@@ -31,19 +31,19 @@ public final class HeightCommand {
 
     private final FlectoneGrowthCore core;
 
-    @Command("height <meters>")
+    @Command("height <type>")
     @CommandDescription("Set your own height, in meters.")
     @Permission("flectonegrowth.height")
-    public void setOwn(CommandSender sender, @Argument(value = "meters", suggestions = "height-values") double meters) {
-        CommandGuards.requirePlayer(core, sender, player -> apply(player, player, meters));
+    public void setOwn(CommandSender sender, @Argument(value = "type", suggestions = "height-values") double value) {
+        CommandGuards.requirePlayer(core, sender, player -> apply(player, player, value));
     }
 
-    @Command("height set <target> <meters>")
+    @Command("height set <target> <type>")
     @CommandDescription("Set another player's height, in meters.")
     @Permission("flectonegrowth.height.others")
     public void setOthers(CommandSender sender, @Argument("target") Player target,
-                           @Argument(value = "meters", suggestions = "height-values") double meters) {
-        apply(sender, target, meters);
+                           @Argument(value = "type", suggestions = "height-values") double value) {
+        apply(sender, target, value);
     }
 
     @Command("height remove")
@@ -61,7 +61,7 @@ public final class HeightCommand {
     }
 
     /**
-     * {@code meters} is the player-facing unit (matches what {@code height-values}
+     * {@code value} is in meters, the player-facing unit (matches what {@code height-values}
      * suggests and what every display message shows via {@link ScaleMath#formatValue}) -
      * the Bukkit {@code Attribute.SCALE} the engine actually stores/applies is a
      * different unit entirely (1.0 == {@link ScaleMath#METERS_AT_SCALE_ONE} meters),
@@ -70,10 +70,10 @@ public final class HeightCommand {
      * through unconverted was a real bug: a suggested value like {@code 1.88} would
      * always fail the engine's scale-space min/max check.
      */
-    private void apply(CommandSender sender, Player targetPlayer, double meters) {
+    private void apply(CommandSender sender, Player targetPlayer, double value) {
         GrowthEngine engine = core.growthEngine();
         BukkitPlayerAdapter target = new BukkitPlayerAdapter(targetPlayer);
-        double scale = ScaleMath.fromMeters(meters);
+        double scale = ScaleMath.fromMeters(value);
         engine.setCustomScale(target, scale,
                 applied -> FlectoneGrowthMessages.send(core, sender, "height.set", Map.of(
                         "player", targetPlayer.getName(),

@@ -130,17 +130,17 @@ region-scheduler support for entity-affecting work).
 
 | Command | Description | Permission (default) |
 |---|---|---|
-| `/height <meters>` | Set your own custom height. | `flectonegrowth.height` (everyone) |
+| `/height <type>` | Set your own custom height. | `flectonegrowth.height` (everyone) |
 | `/height remove` | Remove your custom height and resume natural growth. | `flectonegrowth.height` (everyone) |
-| `/height set <player> <meters>` | Set another player's custom height. | `flectonegrowth.height.others` (op) |
+| `/height set <player> <type>` | Set another player's custom height. | `flectonegrowth.height.others` (op) |
 | `/height remove <player>` | Remove another player's custom height. | `flectonegrowth.height.others` (op) |
 | `/gender <type>` | Set your own gender. | `flectonegrowth.gender` (everyone) |
 | `/gender set <player> <type>` | Set another player's gender. | `flectonegrowth.gender.others` (op) |
 | `/growth summary [player]` | View height, gender, and growth progress. | `flectonegrowth.info` (everyone) / `.others` (op) |
 | `/growth height [player]` | View height and growth progress only. | `flectonegrowth.info` (everyone) / `.others` (op) |
 | `/growth gender [player]` | View gender only. | `flectonegrowth.info` (everyone) / `.others` (op) |
-| `/flectonegrowth reload` (alias `/pg reload`) | Reload config/gender/messages without a restart. | `flectonegrowth.admin.reload` (op) |
-| `/flectonegrowth help` (alias `/pg help`) | List every command available to you. | `flectonegrowth.help` (everyone) |
+| `/flectonegrowth reload` (alias `/fg reload`) | Reload config/gender/messages without a restart. | `flectonegrowth.admin.reload` (op) |
+| `/flectonegrowth migrate playtime` (alias `/fg migrate playtime`) | Import every known player's vanilla playtime statistic into FlectoneGrowth's own tracking (adds to any existing record). | `flectonegrowth.admin.migrate` (op) |
 
 `flectonegrowth.update-notify` (default: op) is not a command permission —
 it controls who gets notified in-game about a pending plugin update.

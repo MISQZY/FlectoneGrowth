@@ -13,9 +13,11 @@
 
 command:
   players-only: '<red>This command can only be used by a player.</red>'
+  no-permission: '<red>You don''t have permission to use this command.</red>'
+  error: '<red>Something went wrong running that command. Ask an admin to check the console.</red>'
   invalid-syntax: |-
     <secondary>|</secondary>
-    <secondary>|</secondary> <secondary>Usage →<secondary>
+    <secondary>|</secondary> <secondary>Usage →</secondary>
     <secondary>|</secondary> <primary><syntax></primary>
     <secondary>|</secondary>
 
@@ -43,26 +45,11 @@ growth-info:
   remaining: '<secondary>Time remaining: <primary><time>'
 
 admin:
-  reloaded: '<primary><secondary>FlectoneGrowth</secondary> configuration successfully reloaded! (<secondary><time></secondary>).</primary>'
-  update-available: '<primary>A new <secondary>FlectoneGrowth</secondary> version is available: <secondary><latest></secondary><primary> (you have <secondary><current></secondary><primary>). Download: <secondary><url></secondary>'
-
-help:
-  header: '<primary>--- FlectoneGrowth commands ---</primary>'
-  entry: '<secondary><syntax> - <primary><description>'
-  height: 'Set your own height, in meters.'
-  height-remove: 'Remove your custom height.'
-  height-set-others: 'Set another player''s height, in meters.'
-  height-remove-others: 'Remove another player''s custom height.'
-  gender: 'Set your own gender.'
-  gender-others: 'Set another player''s gender.'
-  growth-summary: 'View your own growth summary.'
-  growth-summary-others: 'View another player''s growth summary.'
-  growth-height: 'View your own height info.'
-  growth-height-others: 'View another player''s height info.'
-  growth-gender: 'View your own gender info.'
-  growth-gender-others: 'View another player''s gender info.'
-  reload: 'Reload the FlectoneGrowth configuration.'
-  help: 'Show this help message.'
+  reloaded: '<primary><secondary>FlectoneGrowth</secondary><primary> configuration successfully reloaded! (<secondary><time></secondary><primary>).'
+  update-available: '<primary>A new <secondary>FlectoneGrowth</secondary><primary> version is available: <secondary><latest></secondary><primary> (you have <secondary><current></secondary><primary>). Download: <secondary><url></secondary>'
+  migrate-playtime-started: '<primary>Migrating playtime for <secondary><count></secondary><primary> known player(s)... this may take a moment.'
+  migrate-playtime-done: '<primary>Playtime migration complete: <secondary><migrated></secondary><primary> migrated, <secondary><skipped></secondary><primary> skipped.'
+  migrate-playtime-sync-disabled: '<red>Note: network.sync-enabled is off, so migrated playtime has no effect on growth yet - growth reads the live statistic directly on a single, unsynced server. Enable network.sync-enabled first if you want it to take effect.</red>'
 
 time:
   days: 'd'

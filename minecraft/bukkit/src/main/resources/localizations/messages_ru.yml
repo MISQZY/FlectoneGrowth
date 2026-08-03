@@ -13,9 +13,11 @@
 
 command:
   players-only: '<red>Эта команда доступна только игрокам.</red>'
+  no-permission: '<red>У вас нет прав на использование этой команды.</red>'
+  error: '<red>Не удалось выполнить команду. Попросите администратора проверить консоль.</red>'
   invalid-syntax: |-
     <secondary>|</secondary>
-    <secondary>|</secondary> <secondary>Использование →<secondary>
+    <secondary>|</secondary> <secondary>Использование →</secondary>
     <secondary>|</secondary> <primary><syntax></primary>
     <secondary>|</secondary>
 
@@ -43,26 +45,11 @@ growth-info:
   remaining: '<secondary>Осталось времени: <primary><time>'
 
 admin:
-  reloaded: '<primary>Конфигурация <secondary>FlectoneGrowth</secondary> успешно перезагружена! (<secondary><time></secondary>).</primary>'
-  update-available: '<primary>Доступна новая версия <secondary>FlectoneGrowth</secondary>: <secondary><latest></secondary><primary> (у вас <secondary><current></secondary><primary>). Скачать: <secondary><url></secondary>'
-
-help:
-  header: '<primary>--- Команды FlectoneGrowth ---</primary>'
-  entry: '<secondary><syntax> - <primary><description>'
-  height: 'Установить свой рост, в метрах.'
-  height-remove: 'Сбросить свой индивидуальный рост.'
-  height-set-others: 'Установить рост другого игрока, в метрах.'
-  height-remove-others: 'Сбросить индивидуальный рост другого игрока.'
-  gender: 'Установить свой пол.'
-  gender-others: 'Установить пол другого игрока.'
-  growth-summary: 'Посмотреть общую информацию о своём росте.'
-  growth-summary-others: 'Посмотреть общую информацию о росте другого игрока.'
-  growth-height: 'Посмотреть информацию о своём росте (только рост).'
-  growth-height-others: 'Посмотреть информацию о росте другого игрока (только рост).'
-  growth-gender: 'Посмотреть информацию о своём поле.'
-  growth-gender-others: 'Посмотреть информацию о поле другого игрока.'
-  reload: 'Перезагрузить конфигурацию FlectoneGrowth.'
-  help: 'Показать это сообщение помощи.'
+  reloaded: '<primary>Конфигурация <secondary>FlectoneGrowth</secondary><primary> успешно перезагружена! (<secondary><time></secondary><primary>).'
+  update-available: '<primary>Доступна новая версия <secondary>FlectoneGrowth</secondary><primary>: <secondary><latest></secondary><primary> (у вас <secondary><current></secondary><primary>). Скачать: <secondary><url></secondary>'
+  migrate-playtime-started: '<primary>Миграция игрового времени для <secondary><count></secondary><primary> известных игроков... это может занять некоторое время.'
+  migrate-playtime-done: '<primary>Миграция игрового времени завершена: <secondary><migrated></secondary><primary> перенесено, <secondary><skipped></secondary><primary> пропущено.'
+  migrate-playtime-sync-disabled: '<red>Внимание: network.sync-enabled отключён, поэтому перенесённое время пока не влияет на рост - на одиночном несинхронизированном сервере рост считается напрямую по статистике игры. Включите network.sync-enabled, чтобы миграция вступила в силу.</red>'
 
 time:
   days: 'д'

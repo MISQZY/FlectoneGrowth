@@ -8,8 +8,10 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.misqzy.flectonegrowth.common.config.ConfigView;
 
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -84,6 +86,18 @@ public final class Messages {
     // into the output as literal text, so they're stripped before parsing.
     private static final Pattern CLOSING_TAGS = Pattern.compile("</primary>|</secondary>|</fcolor(?::[0-9]+)?>");
 
+    /** Ultimate fallback if every localization file failed to load - every lookup degrades to its own "missing key"/default value instead of throwing. */
+    private static final ConfigView EMPTY_VIEW = new ConfigView() {
+        @Override public String getString(String path, String def) { return def; }
+        @Override public int getInt(String path, int def) { return def; }
+        @Override public long getLong(String path, long def) { return def; }
+        @Override public double getDouble(String path, double def) { return def; }
+        @Override public boolean getBoolean(String path, boolean def) { return def; }
+        @Override public List<String> getStringList(String path) { return List.of(); }
+        @Override public ConfigView getSection(String path) { return null; }
+        @Override public Set<String> keys() { return Set.of(); }
+    };
+
     private final Map<String, ConfigView> locales;
     private final String defaultLocale;
     private final String primaryColor;
@@ -118,7 +132,9 @@ public final class Messages {
         if (view != null) return view;
 
         ConfigView fallback = locales.get(defaultLocale);
-        return fallback != null ? fallback : locales.values().iterator().next();
+        if (fallback != null) return fallback;
+
+        return locales.isEmpty() ? EMPTY_VIEW : locales.values().iterator().next();
     }
 
     public String raw(String key) {
@@ -231,14 +247,28 @@ public final class Messages {
         return value.startsWith("<") ? value : "<" + value + ">";
     }
 
-    /** Placeholder values are usually stringified ({@link Placeholder#unparsed}), but a caller can pass a pre-built {@link Component} (e.g. one carrying a {@code ClickEvent}) via {@link Placeholder#component} instead - used by command-syntax placeholders that need to stay clickable. */
+    /**
+     * A placeholder value that should be re-parsed as MiniMessage markup
+     * ({@link Placeholder#parsed}) instead of inserted as literal text
+     * ({@link Placeholder#unparsed}) - for a caller building real MiniMessage
+     * tags (e.g. {@code <click:suggest_command:'...'>}) around a piece of
+     * dynamic text. Not achievable by nesting another placeholder inside a
+     * tag's own argument (verified with a standalone harness:
+     * {@code <click:suggest_command:'<command>'>} leaves the argument as the
+     * literal, unresolved text {@code "<command>"} instead of substituting
+     * it) - the caller must build the whole tag, argument included, into one
+     * string ahead of time.
+     */
+    public record RawMarkup(String value) {}
+
+    /** Placeholder values are usually stringified ({@link Placeholder#unparsed}), but a caller can pass a {@link RawMarkup} to have it re-parsed as MiniMessage markup instead ({@link Placeholder#parsed}). */
     private static TagResolver buildResolver(Map<String, Object> placeholders) {
         if (placeholders == null || placeholders.isEmpty()) return TagResolver.empty();
         TagResolver.Builder builder = TagResolver.builder();
         for (Map.Entry<String, Object> entry : placeholders.entrySet()) {
             Object value = entry.getValue();
-            TagResolver resolver = value instanceof Component component
-                    ? Placeholder.component(entry.getKey(), component)
+            TagResolver resolver = value instanceof RawMarkup markup
+                    ? Placeholder.parsed(entry.getKey(), markup.value())
                     : Placeholder.unparsed(entry.getKey(), String.valueOf(value));
             builder.resolver(resolver);
         }

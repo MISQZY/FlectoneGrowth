@@ -28,9 +28,9 @@ permissions:
   flectonegrowth.admin.reload:
     description: Reload the FlectoneGrowth configuration.
     default: op
-  flectonegrowth.help:
-    description: List available FlectoneGrowth commands.
-    default: true
+  flectonegrowth.admin.migrate:
+    description: Migrate playtime data into FlectoneGrowth's own tracking.
+    default: op
   flectonegrowth.update-notify:
     description: Get notified in-game when a newer FlectoneGrowth version is available.
     default: op
