@@ -1,7 +1,28 @@
-# FlectoneGrowth — Release Notes (v0.1.1 → v0.2.5)
+# FlectoneGrowth — Release Notes (v0.1.1 → v0.2.6)
 
 A summary of everything new for players and server owners since v0.1.1,
 newest first.
+
+---
+
+## v0.2.6
+
+- **`/growth summary`/`height`/`gender` now show gender name and remaining
+  growth time in your own client language**, matching the locale-per-player
+  behavior v0.2.1 already gave regular messages - these two specific pieces
+  previously always rendered in config.yml's configured default locale
+  regardless of who was looking at them.
+- **Reduced PlaceholderAPI's database load** for leaderboard/hologram/GUI
+  plugins that repeatedly query offline players: offline lookups are now
+  cached for a few seconds instead of hitting storage on every single
+  placeholder resolution.
+- Fixed the "pause growth while boxed in" check forcing an unnecessary
+  chunk load when checking a block in a neighboring, unloaded chunk.
+- Internal cleanup: shared HTTP client for update checks instead of
+  creating a new one per check, small consistency fixes across the
+  FlectonePulse integration, and a few minor thread-safety and
+  code-organization improvements. No other changes to how the plugin
+  looks, feels, or behaves.
 
 ---
 

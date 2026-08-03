@@ -11,8 +11,14 @@ public final class TimeFormatter {
         return String.format(Locale.US, "%.3fs", millis / 1000.0);
     }
 
+    /** Renders in {@code messages}' configured default locale - see {@link #format(long, Messages, String)} for a specific recipient's own locale. */
     public static String format(long totalSeconds, Messages messages) {
-        if (totalSeconds <= 0) return "0 " + messages.raw("time.seconds");
+        return format(totalSeconds, messages, null);
+    }
+
+    /** @param locale a specific recipient's locale (e.g. a player's client locale), or {@code null} for {@code messages}' configured default - see {@link Messages#raw(String, String)}. */
+    public static String format(long totalSeconds, Messages messages, String locale) {
+        if (totalSeconds <= 0) return "0 " + messages.raw(locale, "time.seconds");
 
         long days = totalSeconds / 86_400;
         long hours = (totalSeconds % 86_400) / 3_600;
@@ -20,10 +26,10 @@ public final class TimeFormatter {
         long seconds = totalSeconds % 60;
 
         StringBuilder sb = new StringBuilder();
-        if (days > 0) append(sb, days, messages.raw("time.days"));
-        if (hours > 0) append(sb, hours, messages.raw("time.hours"));
-        if (minutes > 0) append(sb, minutes, messages.raw("time.mins"));
-        if (seconds > 0 || sb.isEmpty()) append(sb, seconds, messages.raw("time.seconds"));
+        if (days > 0) append(sb, days, messages.raw(locale, "time.days"));
+        if (hours > 0) append(sb, hours, messages.raw(locale, "time.hours"));
+        if (minutes > 0) append(sb, minutes, messages.raw(locale, "time.mins"));
+        if (seconds > 0 || sb.isEmpty()) append(sb, seconds, messages.raw(locale, "time.seconds"));
         return sb.toString();
     }
 

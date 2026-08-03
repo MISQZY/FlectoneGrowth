@@ -36,14 +36,18 @@ public final class GrowthBlockCache {
 
     private GrowthBlockCache() {}
 
-    /** Returns the cached result if {@code world}/{@code x}/{@code y}/{@code z} still matches {@code uuid}'s last check, otherwise runs {@code scan} and caches its result. */
+    /**
+     * Returns the cached result if {@code world}/{@code x}/{@code y}/{@code z}
+     * still matches {@code uuid}'s last check, otherwise runs {@code scan} and
+     * caches its result. Uses {@link Map#compute} rather than a get-then-put
+     * pair so the check-and-update is atomic - safe even if this is ever
+     * called for the same player from more than one thread at once, instead
+     * of relying purely on the documented main-thread-only convention.
+     */
     static boolean compute(UUID uuid, UUID world, int x, int y, int z, BooleanSupplier scan) {
-        Entry cached = CACHE.get(uuid);
-        if (cached != null && cached.matches(world, x, y, z)) return cached.blocked;
-
-        boolean blocked = scan.getAsBoolean();
-        CACHE.put(uuid, new Entry(world, x, y, z, blocked));
-        return blocked;
+        return CACHE.compute(uuid, (id, cached) ->
+                (cached != null && cached.matches(world, x, y, z)) ? cached : new Entry(world, x, y, z, scan.getAsBoolean())
+        ).blocked();
     }
 
     /** Forgets {@code uuid}'s cached result - call on quit so a stale entry doesn't linger for a player who's no longer online. */

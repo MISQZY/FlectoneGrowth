@@ -14,6 +14,11 @@ import org.misqzy.flectonegrowth.bukkit.BuildVersion;
 import org.misqzy.flectonegrowth.bukkit.BukkitPlayerAdapter;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
@@ -49,7 +54,24 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
             "%flectonegrowth_has_custom_scale%"
     );
 
+    /**
+     * PAPI's placeholder API has no async contract - {@link #onRequest} must
+     * return a value immediately - so {@link #resolveOffline} has no choice
+     * but to hit storage synchronously (see {@link GrowthEngine#loadOffline}).
+     * A short-lived cache keeps that tolerable for the realistic worst case:
+     * a leaderboard/hologram/GUI plugin re-resolving several placeholders for
+     * the same set of offline players every refresh, which would otherwise
+     * multiply into that many blocking DB round-trips per refresh - often on
+     * the caller's own main thread.
+     */
+    private static final long OFFLINE_CACHE_TTL_MILLIS = 3_000L;
+    private static final long OFFLINE_CACHE_SWEEP_EVERY = 200L;
+
     private final FlectoneGrowthCore core;
+    private final Map<UUID, CachedOfflineProfile> offlineCache = new ConcurrentHashMap<>();
+    private final AtomicLong offlineCacheWritesSinceSweep = new AtomicLong();
+
+    private record CachedOfflineProfile(OfflineProfile profile, long fetchedAtMillis) {}
 
     @Override public @NotNull String getIdentifier() { return "flectonegrowth"; }
     @Override public @NotNull String getName() { return "FlectoneGrowth"; }
@@ -90,7 +112,7 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
      * get real data instead of PAPI's usual empty-string default.
      */
     private String resolveOffline(GrowthEngine engine, OfflinePlayer offlinePlayer, String params) {
-        OfflineProfile profile = engine.loadOffline(offlinePlayer.getUniqueId());
+        OfflineProfile profile = loadOfflineCached(engine, offlinePlayer.getUniqueId());
         return resolve(params, new GrowthData(
                 () -> engine.effectiveScale(profile),
                 engine::minScale,
@@ -103,6 +125,27 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
         ));
     }
 
+    /** Serves a storage read from {@link #offlineCache} if it's still fresh, else fetches and caches a new one - see the field javadoc above. */
+    private OfflineProfile loadOfflineCached(GrowthEngine engine, UUID uuid) {
+        long now = System.currentTimeMillis();
+        CachedOfflineProfile cached = offlineCache.get(uuid);
+        if (cached != null && now - cached.fetchedAtMillis() < OFFLINE_CACHE_TTL_MILLIS) {
+            return cached.profile();
+        }
+
+        OfflineProfile profile = engine.loadOffline(uuid);
+        offlineCache.put(uuid, new CachedOfflineProfile(profile, now));
+        sweepExpiredIfDue(now);
+        return profile;
+    }
+
+    /** Opportunistically evicts expired entries every {@link #OFFLINE_CACHE_SWEEP_EVERY} writes, so the cache doesn't grow forever from one-off lookups of players never queried again. */
+    private void sweepExpiredIfDue(long now) {
+        if (offlineCacheWritesSinceSweep.incrementAndGet() < OFFLINE_CACHE_SWEEP_EVERY) return;
+        offlineCacheWritesSinceSweep.set(0L);
+        offlineCache.entrySet().removeIf(e -> now - e.getValue().fetchedAtMillis() >= OFFLINE_CACHE_TTL_MILLIS);
+    }
+
     /**
      * The one placeholder-key-to-value mapping both {@link #resolveOnline}
      * and {@link #resolveOffline} drive - previously typed out as two
@@ -113,7 +156,7 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
      * per placeholder) still only evaluates the one figure it actually needs.
      */
     private String resolve(String params, GrowthData data) {
-        return switch (params.toLowerCase()) {
+        return switch (params.toLowerCase(Locale.ROOT)) {
             case "height" -> ScaleMath.formatValue(data.current().getAsDouble());
             case "height_full" -> ScaleMath.format(data.current().getAsDouble(), core.messages().heightUnit());
             case "height_min" -> ScaleMath.formatValue(data.min().getAsDouble());

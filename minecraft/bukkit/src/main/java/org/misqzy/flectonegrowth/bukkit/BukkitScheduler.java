@@ -18,6 +18,8 @@ import org.misqzy.flectonegrowth.common.platform.Scheduler;
 @RequiredArgsConstructor
 public final class BukkitScheduler implements Scheduler {
 
+    private static final long MILLIS_PER_TICK = 50L;
+
     private final JavaPlugin plugin;
 
     @Override
@@ -36,8 +38,8 @@ public final class BukkitScheduler implements Scheduler {
 
     @Override
     public ScheduledTask runSyncTimer(Runnable task, long delayMillis, long periodMillis) {
-        long delayTicks = Math.max(0L, delayMillis / 50L);
-        long periodTicks = Math.max(1L, periodMillis / 50L);
+        long delayTicks = Math.max(0L, delayMillis / MILLIS_PER_TICK);
+        long periodTicks = Math.max(1L, periodMillis / MILLIS_PER_TICK);
         BukkitTask bukkitTask = Bukkit.getScheduler().runTaskTimer(plugin, task, delayTicks, periodTicks);
         return bukkitTask::cancel;
     }

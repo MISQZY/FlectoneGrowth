@@ -59,7 +59,7 @@ public final class FlectoneGrowthAPIImpl implements FlectoneGrowthAPI {
 
     @Override
     public OptionalLong getGrowthRemainingSeconds(Player player) {
-        if (player == null || !player.isOnline()) return OptionalLong.empty();
+        if (unavailable(player)) return OptionalLong.empty();
         return OptionalLong.of(core.growthEngine().secondsUntilFullGrowth(new BukkitPlayerAdapter(player)));
     }
 
@@ -74,7 +74,11 @@ public final class FlectoneGrowthAPIImpl implements FlectoneGrowthAPI {
     }
 
     private <T> Optional<T> query(Player player, BiFunction<GrowthEngine, BukkitPlayerAdapter, T> function) {
-        if (player == null || !player.isOnline()) return Optional.empty();
+        if (unavailable(player)) return Optional.empty();
         return Optional.of(function.apply(core.growthEngine(), new BukkitPlayerAdapter(player)));
+    }
+
+    private static boolean unavailable(Player player) {
+        return player == null || !player.isOnline();
     }
 }

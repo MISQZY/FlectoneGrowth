@@ -78,7 +78,7 @@ public final class FlectonePulseColorResolver {
             return;
         }
 
-        if (!Bukkit.getPluginManager().isPluginEnabled("FlectonePulse")) {
+        if (!Bukkit.getPluginManager().isPluginEnabled(FlectonePulseAccess.PLUGIN_NAME)) {
             logger.info("[FlectonePulse] Not installed/enabled - <fcolor:N> tags will be a no-op.");
             return;
         }

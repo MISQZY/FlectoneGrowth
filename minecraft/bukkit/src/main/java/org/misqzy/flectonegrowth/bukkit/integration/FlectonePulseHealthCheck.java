@@ -42,7 +42,7 @@ public final class FlectonePulseHealthCheck {
             return;
         }
 
-        if (!Bukkit.getPluginManager().isPluginEnabled("FlectonePulse")) {
+        if (!Bukkit.getPluginManager().isPluginEnabled(FlectonePulseAccess.PLUGIN_NAME)) {
             logger.info("[FlectonePulse] Not installed/enabled - every integration (fcolor palette, server-id "
                     + "reuse, message dispatch) is a no-op; FlectoneGrowth works standalone.");
             return;

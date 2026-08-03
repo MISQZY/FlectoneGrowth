@@ -23,6 +23,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public final class BukkitPlayerAdapter implements PlatformPlayer {
 
+    private static final long TICKS_PER_SECOND = 20L;
+
     // Not @Getter - the public accessor is intentionally named bukkit(), not
     // player(), so it stays hand-written rather than fighting Lombok's
     // fluent-accessor-name-matches-field-name convention.
@@ -40,7 +42,7 @@ public final class BukkitPlayerAdapter implements PlatformPlayer {
 
     @Override
     public long playedSeconds() {
-        return player.getStatistic(Statistic.PLAY_ONE_MINUTE) / 20L;
+        return player.getStatistic(Statistic.PLAY_ONE_MINUTE) / TICKS_PER_SECOND;
     }
 
     @Override
@@ -73,11 +75,18 @@ public final class BukkitPlayerAdapter implements PlatformPlayer {
      * the block above the head, without querying it twice or re-resolving
      * {@code world} on every call. Only invoked by {@link GrowthBlockCache}
      * when the position it's keyed on has actually changed.
+     *
+     * <p>Each column's chunk is checked with {@link World#isChunkLoaded(int, int)}
+     * before touching it - {@code getBlockAt} on an unloaded chunk forces a
+     * synchronous chunk load on whatever thread calls it, and this runs on
+     * the main thread every growth tick. An unloaded neighbor is treated as
+     * "not solid" rather than paying for that load.</p>
      */
     private static boolean scanForSolidBlocks(World world, int bx, int by, int bz) {
-        for (int y = by; y <= by + 1; y++) {
-            for (int x = bx - 1; x <= bx + 1; x++) {
-                for (int z = bz - 1; z <= bz + 1; z++) {
+        for (int x = bx - 1; x <= bx + 1; x++) {
+            for (int z = bz - 1; z <= bz + 1; z++) {
+                if (!world.isChunkLoaded(x >> 4, z >> 4)) continue;
+                for (int y = by; y <= by + 1; y++) {
                     if (x == bx && y == by && z == bz) continue;
                     if (isSolid(world.getBlockAt(x, y, z))) return true;
                 }

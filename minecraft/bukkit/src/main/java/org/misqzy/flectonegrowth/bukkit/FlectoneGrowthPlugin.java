@@ -11,7 +11,6 @@ import org.misqzy.flectonegrowth.common.config.ConfigView;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.network.NetworkMessenger;
 import org.misqzy.flectonegrowth.common.platform.PlatformPlayer;
-import org.misqzy.flectonegrowth.common.platform.PlayerLookup;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.bukkit.api.FlectoneGrowthAPI;
@@ -32,6 +31,7 @@ import org.misqzy.flectonegrowth.bukkit.network.BukkitNetworkMessenger;
 import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.LongConsumer;
@@ -139,28 +139,34 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
         ConfigView integrationsConfig = loadConfig("integrations.yml");
 
         scheduler = new BukkitScheduler(this);
+        NetworkMessenger messenger = createNetworkMessenger(mainConfig);
+        String serverId = resolveServerId(mainConfig, integrationsConfig);
 
-        NetworkMessenger messenger;
-        if (mainConfig.getBoolean("network.sync-enabled", false)) {
-            networkMessenger = new BukkitNetworkMessenger(this);
-            networkMessenger.register();
-            messenger = networkMessenger;
-        } else {
-            messenger = NetworkMessenger.DISABLED;
-        }
-
-        PlayerLookup lookup = this::findOnline;
-
-        String configuredServerId = ServerIdProvisioner.resolveOrGenerate(this, mainConfig);
-        String serverId = FlectonePulseServerIdResolver.resolve(this, configuredServerId, integrationsConfig);
-        ServerIdProvisioner.persistIfChanged(this, configuredServerId, serverId);
         BukkitPlatform platform = new BukkitPlatform(this, scheduler, serverId);
-        BukkitModule bukkitModule = new BukkitModule(scheduler, messenger, lookup);
+        BukkitModule bukkitModule = new BukkitModule(scheduler, messenger, this::findOnline);
 
         FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
         return FlectoneGrowthCore.bootstrap(platform, bukkitModule,
                 new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
                         () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
+    }
+
+    /** A real plugin-messaging-backed {@link NetworkMessenger} (registered now, torn down in {@link #onDisable}) if {@code network.sync-enabled} is on, otherwise the shared no-op {@link NetworkMessenger#DISABLED}. */
+    private NetworkMessenger createNetworkMessenger(ConfigView mainConfig) {
+        if (!mainConfig.getBoolean("network.sync-enabled", false)) {
+            return NetworkMessenger.DISABLED;
+        }
+        networkMessenger = new BukkitNetworkMessenger(this);
+        networkMessenger.register();
+        return networkMessenger;
+    }
+
+    /** This server's id (see {@link ServerIdProvisioner}/{@link FlectonePulseServerIdResolver}), persisting it back to config.yml if it changed. */
+    private String resolveServerId(ConfigView mainConfig, ConfigView integrationsConfig) {
+        String configuredServerId = ServerIdProvisioner.resolveOrGenerate(this, mainConfig);
+        String serverId = FlectonePulseServerIdResolver.resolve(this, configuredServerId, integrationsConfig);
+        ServerIdProvisioner.persistIfChanged(this, configuredServerId, serverId);
+        return serverId;
     }
 
     private PlatformPlayer findOnline(UUID uuid) {
@@ -193,7 +199,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
         if (files != null) {
             for (File file : files) {
                 String name = file.getName();
-                String code = name.substring("messages_".length(), name.length() - ".yml".length()).toLowerCase();
+                String code = name.substring("messages_".length(), name.length() - ".yml".length()).toLowerCase(Locale.ROOT);
                 byLocale.putIfAbsent(code, YamlFileLoader.load(file));
             }
         }

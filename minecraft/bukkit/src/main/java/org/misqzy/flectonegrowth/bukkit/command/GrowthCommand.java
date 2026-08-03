@@ -75,24 +75,27 @@ public final class GrowthCommand {
     }
 
     private void showSummary(CommandSender sender, Player targetPlayer) {
+        String locale = FlectoneGrowthMessages.resolveLocale(core, sender);
         List<Line> lines = new ArrayList<>();
         addHeader(lines, targetPlayer);
-        addHeight(lines, targetPlayer);
-        addGender(lines, targetPlayer);
+        addHeight(lines, targetPlayer, locale);
+        addGender(lines, targetPlayer, locale);
         FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 
     private void showHeight(CommandSender sender, Player targetPlayer) {
+        String locale = FlectoneGrowthMessages.resolveLocale(core, sender);
         List<Line> lines = new ArrayList<>();
         addHeader(lines, targetPlayer);
-        addHeight(lines, targetPlayer);
+        addHeight(lines, targetPlayer, locale);
         FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 
     private void showGender(CommandSender sender, Player targetPlayer) {
+        String locale = FlectoneGrowthMessages.resolveLocale(core, sender);
         List<Line> lines = new ArrayList<>();
         addHeader(lines, targetPlayer);
-        addGender(lines, targetPlayer);
+        addGender(lines, targetPlayer, locale);
         FlectoneGrowthMessages.sendLines(core, sender, lines);
     }
 
@@ -100,13 +103,19 @@ public final class GrowthCommand {
         lines.add(new Line("growth-info.header", Map.of("player", targetPlayer.getName())));
     }
 
-    private void addGender(List<Line> lines, Player targetPlayer) {
+    /**
+     * @param locale the message's own recipient locale ({@link FlectoneGrowthMessages#resolveLocale})
+     *               - needed here too since {@code core.genderDisplayName} otherwise always resolves
+     *               against config.yml's default locale, mismatching the rest of the message when the
+     *               sender's own client locale differs (see {@code FlectoneGrowthMessages#resolveLocale}).
+     */
+    private void addGender(List<Line> lines, Player targetPlayer, String locale) {
         BukkitPlayerAdapter target = new BukkitPlayerAdapter(targetPlayer);
-        lines.add(new Line("growth-info.gender", Map.of("gender", core.genderDisplayName(target))));
+        lines.add(new Line("growth-info.gender", Map.of("gender", core.genderDisplayName(target, locale))));
     }
 
     /** Height value plus growth progress - progress is a height-growth metric, so it belongs with height, not the generic summary alone. */
-    private void addHeight(List<Line> lines, Player targetPlayer) {
+    private void addHeight(List<Line> lines, Player targetPlayer, String locale) {
         GrowthEngine engine = core.growthEngine();
         BukkitPlayerAdapter target = new BukkitPlayerAdapter(targetPlayer);
 
@@ -115,14 +124,14 @@ public final class GrowthCommand {
         lines.add(new Line("growth-info.height", Map.of(
                 "value", ScaleMath.formatValue(current),
                 "unit", core.messages().heightUnit(),
-                "gender", core.genderDisplayName(target))));
+                "gender", core.genderDisplayName(target, locale))));
 
         if (engine.isAtMaxGrowth(target)) {
             lines.add(new Line("growth-info.max-reached"));
         } else {
             long remaining = engine.secondsUntilFullGrowth(target);
             lines.add(new Line("growth-info.remaining", Map.of(
-                    "time", TimeFormatter.format(remaining, core.messages()))));
+                    "time", TimeFormatter.format(remaining, core.messages(), locale))));
         }
     }
 }

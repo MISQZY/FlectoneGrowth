@@ -9,6 +9,7 @@ import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.lang.Messages;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -68,9 +69,8 @@ public final class FlectoneGrowthMessages {
     /**
      * Renders every one of {@code lines} and sends them as a single message
      * with a line break between each, instead of one {@link #send} call per
-     * line - {@code /flectonegrowth help} and {@code /growth summary} used
-     * to arrive as several separate chat entries for what is conceptually
-     * one piece of output.
+     * line - {@code /growth summary} used to arrive as several separate chat
+     * entries for what is conceptually one piece of output.
      *
      * <p>Always renders locally - deliberately does not attempt
      * {@link FlectonePulseMessageDispatcher} routing, the same call
@@ -92,13 +92,29 @@ public final class FlectoneGrowthMessages {
         LegacyText.send(sender, Component.join(JoinConfiguration.newlines(), rendered));
     }
 
+    /**
+     * The locale {@code sender} will actually see a message rendered in -
+     * {@code null} for a non-player sender (console) or a player whose
+     * client locale has no matching translation, meaning "use config.yml's
+     * configured default", exactly like {@link #send}/{@link #sendLines}
+     * resolve it internally. Exposed for a caller that needs to pre-resolve
+     * a locale-sensitive value (e.g. {@code FlectoneGrowthCore#genderDisplayName})
+     * before building the placeholder map handed to those methods - without
+     * this, that value would always render in the configured default locale
+     * regardless of what locale the rest of the message ends up in,
+     * mismatching it for a player whose client locale differs.
+     */
+    public static String resolveLocale(FlectoneGrowthCore core, CommandSender sender) {
+        return sender instanceof Player player ? clientLocale(core.messages(), player) : null;
+    }
+
     /** {@code player}'s client locale's language segment (e.g. {@code "ru_ru"} -> {@code "ru"}) if a matching translation file is loaded, else config.yml's configured default. */
     private static String clientLocale(Messages messages, Player player) {
         String raw = player.getLocale();
         if (raw == null || raw.isBlank()) return null;
 
         int separator = raw.indexOf('_');
-        String language = (separator > 0 ? raw.substring(0, separator) : raw).toLowerCase();
+        String language = (separator > 0 ? raw.substring(0, separator) : raw).toLowerCase(Locale.ROOT);
         return messages.hasLocale(language) ? language : null;
     }
 

@@ -44,7 +44,8 @@ import org.bukkit.Bukkit;
  */
 final class FlectonePulseAccess {
 
-    private static final String PLUGIN_NAME = "FlectonePulse";
+    /** The Bukkit plugin name FlectonePulse registers under - the single source of truth every class in this package checks {@link Bukkit#getPluginManager()} against. */
+    static final String PLUGIN_NAME = "FlectonePulse";
 
     private FlectonePulseAccess() {}
 

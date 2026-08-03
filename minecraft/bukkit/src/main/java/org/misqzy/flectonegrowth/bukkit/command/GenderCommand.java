@@ -59,10 +59,11 @@ public final class GenderCommand {
         Gender gender = registry.resolve(type);
         GrowthEngine engine = core.growthEngine();
         BukkitPlayerAdapter target = new BukkitPlayerAdapter(targetPlayer);
+        String locale = FlectoneGrowthMessages.resolveLocale(core, sender);
         engine.setGender(target, gender,
                 () -> FlectoneGrowthMessages.send(core, sender, "gender.set", Map.of(
                         "player", targetPlayer.getName(),
-                        "gender", core.genderDisplayName(gender))),
+                        "gender", core.genderDisplayName(gender, locale))),
                 () -> FlectoneGrowthMessages.send(core, sender, "gender.set-failed"));
     }
 }

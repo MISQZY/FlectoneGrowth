@@ -33,6 +33,11 @@ public final class UpdateChecker {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
+    // HttpClient is explicitly designed to be created once and reused - it owns a connection
+    // pool internally, so a fresh instance per check would rebuild that pool (and redo the TLS
+    // handshake) every time instead of reusing a warm connection to api.github.com.
+    private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+
     private UpdateChecker() {}
 
     /**
@@ -45,14 +50,13 @@ public final class UpdateChecker {
      */
     public static Optional<String> latestVersionIfNewer(String owner, String repo, String currentVersion, Logger logger) {
         try {
-            HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.github.com/repos/" + owner + "/" + repo + "/tags"))
                     .header("Accept", "application/vnd.github+json")
                     .timeout(TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 logger.log(Level.FINE, "Update check: GitHub returned HTTP {0}", response.statusCode());
                 return Optional.empty();
