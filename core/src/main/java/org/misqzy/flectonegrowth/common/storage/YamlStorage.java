@@ -6,16 +6,19 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -52,8 +55,10 @@ public final class YamlStorage implements Storage {
                 parent.mkdirs();
 
             if (!file.exists()) {
-                //noinspection ResultOfMethodCallIgnored
-                file.createNewFile();
+                if (!file.createNewFile() && !file.exists()) {
+                    logger.severe("Failed to initialise YAML storage: could not create " + file.getAbsolutePath());
+                    return false;
+                }
             } else {
                 try (InputStreamReader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
                     Object loaded = yaml.load(reader);
@@ -66,7 +71,7 @@ public final class YamlStorage implements Storage {
             section("playtimes");
             return true;
         } catch (IOException e) {
-            logger.severe("Failed to initialise YAML storage: " + e.getMessage());
+            logger.log(Level.SEVERE, "Failed to initialise YAML storage: " + e.getMessage(), e);
             return false;
         }
     }
@@ -85,9 +90,26 @@ public final class YamlStorage implements Storage {
         return (Map<String, Object>) root.computeIfAbsent(name, k -> new HashMap<String, Object>());
     }
 
+    /**
+     * Writes to a sibling temp file and atomically renames it over {@link #file},
+     * so a crash/power-loss mid-write can never leave a truncated or half-written
+     * {@code player_data.yml} behind - the original stays intact until the new
+     * content is fully flushed to disk.
+     */
     private void persist() throws IOException {
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) {
-            yaml.dump(root, writer);
+        File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
+        try {
+            try (OutputStreamWriter writer = new OutputStreamWriter(Files.newOutputStream(tmp.toPath()), StandardCharsets.UTF_8)) {
+                yaml.dump(root, writer);
+            }
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // Don't leave a half-written/orphaned .tmp file behind for a failed dump or a move
+            // that can't complete (e.g. AtomicMoveNotSupportedException) - the next successful
+            // persist() would overwrite it anyway, but there's no reason to leave it dangling
+            // in the meantime if this call is about to report failure to its own caller.
+            Files.deleteIfExists(tmp.toPath());
+            throw e;
         }
     }
 
@@ -119,7 +141,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.severe("YAML setCustomScale: " + e.getMessage());
+            logger.log(Level.SEVERE, "YAML setCustomScale: " + e.getMessage(), e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -136,7 +158,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.severe("YAML removeCustomScale: " + e.getMessage());
+            logger.log(Level.SEVERE, "YAML removeCustomScale: " + e.getMessage(), e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -165,13 +187,13 @@ public final class YamlStorage implements Storage {
         lock.writeLock().lock();
         try {
             Map<String, Object> entry = newEntry();
-            entry.put("value", genderKey.toLowerCase());
+            entry.put("value", genderKey.toLowerCase(Locale.ROOT));
             entry.put("valid", true);
             section("genders").put(uuid.toString(), entry);
             persist();
             return true;
         } catch (IOException e) {
-            logger.severe("YAML setGenderKey: " + e.getMessage());
+            logger.log(Level.SEVERE, "YAML setGenderKey: " + e.getMessage(), e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -206,7 +228,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.severe("YAML setGrowthTimeSeconds: " + e.getMessage());
+            logger.log(Level.SEVERE, "YAML setGrowthTimeSeconds: " + e.getMessage(), e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -251,7 +273,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.severe("YAML recordJoin: " + e.getMessage());
+            logger.log(Level.SEVERE, "YAML recordJoin: " + e.getMessage(), e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -274,7 +296,31 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.severe("YAML checkpointPlayTime: " + e.getMessage());
+            logger.log(Level.SEVERE, "YAML checkpointPlayTime: " + e.getMessage(), e);
+            return false;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /** Same read-then-carry-forward shape as {@link #recordJoin} - adds to the existing total instead of overwriting it. */
+    @Override
+    public boolean addPlayTime(UUID uuid, String server, long secondsToAdd, long nowEpochSeconds) {
+        lock.writeLock().lock();
+        try {
+            String key = playtimeKey(uuid, server);
+            Map<?, ?> existing = entry(section("playtimes"), key);
+
+            Map<String, Object> entry = newEntry();
+            entry.put("first", existing != null ? longOf(existing, "first") : nowEpochSeconds);
+            entry.put("last", nowEpochSeconds);
+            entry.put("total", (existing != null ? longOf(existing, "total") : 0L) + secondsToAdd);
+            entry.put("sessions", existing != null ? (int) longOf(existing, "sessions") : 0);
+            section("playtimes").put(key, entry);
+            persist();
+            return true;
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "YAML addPlayTime: " + e.getMessage(), e);
             return false;
         } finally {
             lock.writeLock().unlock();

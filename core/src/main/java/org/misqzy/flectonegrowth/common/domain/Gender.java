@@ -3,6 +3,8 @@ package org.misqzy.flectonegrowth.common.domain;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
+import java.util.Locale;
+
 /**
  * A configurable gender variant. Each gender has its own maximum growth
  * scale, so networks can give e.g. "female" a lower max height than "male"
@@ -23,7 +25,7 @@ public final class Gender {
     private final double maxScale;
 
     public Gender(String key, double maxScale) {
-        this.key = key.toLowerCase();
+        this.key = key.toLowerCase(Locale.ROOT);
         this.maxScale = maxScale;
     }
 

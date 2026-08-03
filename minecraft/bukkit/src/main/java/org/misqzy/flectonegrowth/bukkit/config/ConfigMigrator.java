@@ -15,9 +15,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -74,8 +74,8 @@ public final class ConfigMigrator {
     /** No {@code version} on disk at all (an install from before this field existed) - always stale. */
     private static final String UNKNOWN_VERSION = "0.0.0";
 
-    /** Backup suffix timestamp, e.g. {@code 2026-07-29_14-05} - appended as {@code <name>.yml.backup_<timestamp>}. */
-    private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
+    /** Backup suffix timestamp, e.g. {@code 2026-07-29_14-05-32} - appended as {@code <name>.yml.backup_<timestamp>}. Second-granularity so two migrations run in the same minute (e.g. config.yml and integrations.yml back-to-back) never collide. */
+    private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
     private final JavaPlugin plugin;
     private final Yaml composer;
@@ -102,34 +102,47 @@ public final class ConfigMigrator {
         String onDiskVersion = readVersion(readDisk(configFile));
         if (VersionComparator.compare(onDiskVersion, bundledVersion) >= 0) return;
 
-        migrateOne(MAIN_CONFIG_RESOURCE, onDiskVersion, bundledVersion, true);
+        boolean allMigrated = migrateOne(MAIN_CONFIG_RESOURCE, onDiskVersion, bundledVersion, true);
         for (String resource : LOCALIZATION_RESOURCES) {
-            migrateOne(resource, onDiskVersion, bundledVersion, true);
+            allMigrated &= migrateOne(resource, onDiskVersion, bundledVersion, true);
         }
-        migrateOne(GENDER_RESOURCE, onDiskVersion, bundledVersion, false);
-        migrateOne(INTEGRATIONS_RESOURCE, onDiskVersion, bundledVersion, true);
+        allMigrated &= migrateOne(GENDER_RESOURCE, onDiskVersion, bundledVersion, false);
+        allMigrated &= migrateOne(INTEGRATIONS_RESOURCE, onDiskVersion, bundledVersion, true);
 
-        plugin.getLogger().warning("Migrated FlectoneGrowth's config files from version " + onDiskVersion
-                + " to " + bundledVersion + ". Every file was backed up (<name>.yml.backup_<date_hh_mm>) first,"
-                + " with custom values (and comments) carried over automatically.");
+        if (allMigrated) {
+            plugin.getLogger().warning("Migrated FlectoneGrowth's config files from version " + onDiskVersion
+                    + " to " + bundledVersion + ". Every file was backed up (<name>.yml.backup_<date_hh_mm_ss>) first,"
+                    + " with custom values (and comments) carried over automatically.");
+        } else {
+            plugin.getLogger().severe("FlectoneGrowth's config migration from version " + onDiskVersion + " to "
+                    + bundledVersion + " only partially completed - see the errors above. It will be retried on next startup.");
+        }
     }
 
-    private void migrateOne(String resourceName, String fromVersion, String toVersion, boolean mergeMissingKeys) {
+    /** @return {@code false} only if a backup was attempted but failed, aborting this file's migration - {@code true} for a successful migration or a legitimate no-op (missing/unparseable file). */
+    private boolean migrateOne(String resourceName, String fromVersion, String toVersion, boolean mergeMissingKeys) {
         File target = new File(plugin.getDataFolder(), resourceName);
-        if (!target.exists()) return;
+        if (!target.exists()) return true;
 
         MappingNode bundled = readBundled(resourceName);
-        if (bundled == null) return; // not actually bundled under this name - nothing to migrate against
+        if (bundled == null) return true; // not actually bundled under this name - nothing to migrate against
 
         MappingNode disk = readDisk(target);
-        if (disk == null) return; // empty/unparseable on-disk file - leave it alone rather than guessing
+        if (disk == null) return true; // empty/unparseable on-disk file - leave it alone rather than guessing
 
-        backup(target);
+        if (!backup(target)) {
+            // Without a successful backup, rewriting this file destructively would contradict the
+            // "every file was backed up first" promise logged at the end of migrateIfNeeded() - and
+            // leave the admin with no way back if the migration itself does something unwanted.
+            // Leave it untouched; it'll simply be retried (and re-attempt the backup) on next startup.
+            plugin.getLogger().severe("Skipping migration of " + resourceName + " - backup failed, refusing to rewrite it without one.");
+            return false;
+        }
         ConfigMigrations.apply(resourceName, disk, bundled, fromVersion, toVersion, mergeMissingKeys);
         if (MAIN_CONFIG_RESOURCE.equals(resourceName)) {
             YamlNodeOps.putScalarString(disk, "version", toVersion);
         }
-        write(target, disk);
+        return write(target, disk);
     }
 
     /** Composes the bundled jar copy of {@code resourceName}, or {@code null} if it isn't actually bundled (or fails to read, logged as a warning - that shouldn't happen for a resource actually packaged in this jar). */
@@ -162,20 +175,44 @@ public final class ConfigMigrator {
         return version != null ? version : UNKNOWN_VERSION;
     }
 
-    private void backup(File target) {
+    /** @return {@code true} if {@code target} was successfully copied to its backup path. */
+    private boolean backup(File target) {
         File backup = new File(target.getParentFile(), target.getName() + ".backup_" + LocalDateTime.now().format(BACKUP_TIMESTAMP));
         try {
-            Files.copy(target.toPath(), backup.toPath());
+            Files.copy(target.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            return true;
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to back up " + target.getName() + " before migration: " + e.getMessage());
+            return false;
         }
     }
 
-    private void write(File target, MappingNode content) {
-        try (OutputStreamWriter out = new OutputStreamWriter(new FileOutputStream(target), StandardCharsets.UTF_8)) {
-            serializer.serialize(content, out);
+    /**
+     * Writes to a sibling temp file and atomically renames it over {@code target}, so a crash
+     * mid-write can't leave a truncated config file behind (on top of the backup {@link #backup}
+     * already made).
+     *
+     * @return {@code true} if the write and move both succeeded - {@code migrateOne} propagates
+     * this into its own return value, so a failure here is reported the same way a failed
+     * {@link #backup} is, instead of {@code migrateIfNeeded} logging a blanket "migrated
+     * successfully" even though this file's content on disk never actually changed.
+     */
+    private boolean write(File target, MappingNode content) {
+        File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
+        try {
+            try (OutputStreamWriter out = new OutputStreamWriter(Files.newOutputStream(tmp.toPath()), StandardCharsets.UTF_8)) {
+                serializer.serialize(content, out);
+            }
+            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            return true;
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to write migrated " + target.getName() + ": " + e.getMessage());
+            try {
+                Files.deleteIfExists(tmp.toPath());
+            } catch (IOException cleanupFailure) {
+                plugin.getLogger().warning("Also failed to clean up leftover " + tmp.getName() + ": " + cleanupFailure.getMessage());
+            }
+            return false;
         }
     }
 }

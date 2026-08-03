@@ -4,6 +4,8 @@ import lombok.Getter;
 import lombok.experimental.Accessors;
 import org.misqzy.flectonegrowth.common.storage.StorageType;
 
+import java.util.Locale;
+
 /**
  * Immutable snapshot of everything the growth engine needs from config.yml.
  * A fresh instance is built on every reload; nothing here mutates in place,
@@ -73,7 +75,7 @@ public final class CoreConfig {
 
         StorageType parsedType;
         try {
-            parsedType = StorageType.valueOf(cfg.getString("storage.type", "H2").toUpperCase());
+            parsedType = StorageType.valueOf(cfg.getString("storage.type", "H2").toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             parsedType = StorageType.H2;
         }

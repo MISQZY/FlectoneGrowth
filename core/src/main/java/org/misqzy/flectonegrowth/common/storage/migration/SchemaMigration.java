@@ -5,6 +5,7 @@ import org.misqzy.flectonegrowth.common.config.migration.VersionComparator;
 import org.misqzy.flectonegrowth.common.storage.AbstractSqlStorage;
 import org.misqzy.flectonegrowth.common.storage.H2Storage;
 import org.misqzy.flectonegrowth.common.storage.StorageType;
+import org.misqzy.flectonegrowth.common.storage.TableNames;
 
 import java.util.List;
 
@@ -37,6 +38,6 @@ public interface SchemaMigration {
     /** The plugin version (semver, e.g. {@code "0.1.3"}) this step upgrades the database to. */
     String targetVersion();
 
-    /** Dialect-specific statements to run when upgrading to {@link #targetVersion()}, in order. */
-    List<String> statements(StorageType dialect);
+    /** Dialect-specific statements to run when upgrading to {@link #targetVersion()}, in order, against {@code tables}' (possibly custom-prefixed) table names. */
+    List<String> statements(StorageType dialect, TableNames tables);
 }

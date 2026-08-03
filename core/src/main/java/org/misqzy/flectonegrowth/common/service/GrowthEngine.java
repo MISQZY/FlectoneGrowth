@@ -37,6 +37,11 @@ import java.util.function.DoubleConsumer;
 @Singleton
 public final class GrowthEngine {
 
+    /** Hard floor under any configured {@code minScale()} - a scale of 0 or negative would make a player invisible/broken client-side. */
+    private static final double ABSOLUTE_MIN_SCALE = 0.01;
+    /** Hard floor under any configured tick interval, matching the shortest interval a Minecraft server scheduler can meaningfully honor (one tick). */
+    private static final long MIN_TICK_INTERVAL_MILLIS = 50L;
+
     private final Platform platform;
     private final ProfileCache profiles;
     private final NetworkMessenger messenger;
@@ -82,7 +87,7 @@ public final class GrowthEngine {
     }
 
     public long tickIntervalMillis() {
-        return Math.max(50L, (long) (config.growthUpdateIntervalSeconds() * 1000L));
+        return Math.max(MIN_TICK_INTERVAL_MILLIS, (long) (config.growthUpdateIntervalSeconds() * 1000L));
     }
 
     /** Hot-swaps config/storage/gender registry after a reload; safe to call from any thread (fields are volatile). */
@@ -163,7 +168,19 @@ public final class GrowthEngine {
             }
 
             platform.scheduler().runSync(() -> {
-                if (player.isOnline()) applyScale(player);
+                if (!player.isOnline()) {
+                    // Player quit while this async load was in flight - unloadPlayer already
+                    // ran (and, finding no profile yet, skipped its checkpoint) before the
+                    // getOrCreate above created one. removeIfSame cleans it up now instead of
+                    // leaving a permanent ghost entry (nothing else will ever call
+                    // unloadPlayer for this uuid again) - conditioned on identity rather than
+                    // a blind remove(uuid), since a fast quit-then-rejoin may already have
+                    // replaced this entry with the new session's own freshly-loaded profile,
+                    // which must not be deleted out from under it.
+                    profiles.removeIfSame(uuid, profile);
+                    return;
+                }
+                applyScale(player);
                 if (onLoaded != null) onLoaded.run();
             });
         });
@@ -193,7 +210,7 @@ public final class GrowthEngine {
     // -----------------------------------------------------------------------
 
     public double minScale() {
-        return Math.max(0.01, Math.min(config.minScale(), config.maxScale()));
+        return Math.max(ABSOLUTE_MIN_SCALE, Math.min(config.minScale(), config.maxScale()));
     }
 
     /** The scale a player is actually at right now - their custom/growth-derived attribute value if set, else {@link #minScale()} as the starting point before it's ever been applied. */
@@ -340,12 +357,29 @@ public final class GrowthEngine {
         double finalScale = clamped.getAsDouble();
 
         UUID uuid = player.uuid();
+        // Captured before dispatching async, not re-fetched fresh inside the runSync callback:
+        // see the identity check below for why.
+        PlayerProfile profileAtCallTime = profiles.get(uuid);
         platform.scheduler().runAsync(() -> {
             boolean ok = storage.setCustomScale(uuid, finalScale);
             platform.scheduler().runSync(() -> {
                 if (ok) {
-                    profiles.getOrCreate(uuid, genderRegistry.getDefault()).setCustomScale(finalScale);
-                    player.applyScale(finalScale);
+                    // Only mutate if this exact profile instance is still the one cached for
+                    // uuid. Two distinct races share this one guard: (1) the player quit while
+                    // the async storage write was in flight - unloadPlayer already evicted
+                    // their profile, so profiles.get(uuid) is now null (or a fresh instance,
+                    // see (2)) and mutating/resurrecting profileAtCallTime here would leave a
+                    // permanent ghost entry that skips PlayTimeTracker.recordJoin on their next
+                    // real join; (2) the player quit *and rejoined* before this callback ran -
+                    // their new session's own loadPlayer already replaced this uuid's entry
+                    // with a brand-new PlayerProfile, and applying this stale write to it would
+                    // silently clobber whatever the new session just loaded from storage. The
+                    // storage write already persisted either way, so there's nothing lost by
+                    // skipping the in-memory update here.
+                    if (profileAtCallTime != null && profiles.get(uuid) == profileAtCallTime) {
+                        profileAtCallTime.setCustomScale(finalScale);
+                        if (player.isOnline()) player.applyScale(finalScale);
+                    }
                     messenger.broadcast(SyncMessage.scaleSet(uuid, finalScale, platform.serverId()));
                     if (onSuccess != null) onSuccess.accept(finalScale);
                 } else if (onFailure != null) {
@@ -357,13 +391,17 @@ public final class GrowthEngine {
 
     public void removeCustomScale(PlatformPlayer player, Runnable onSuccess, Runnable onFailure) {
         UUID uuid = player.uuid();
+        // See setCustomScale's comment on profileAtCallTime for why this is captured up front
+        // and compared by identity rather than re-fetched inside the runSync callback.
+        PlayerProfile profileAtCallTime = profiles.get(uuid);
         platform.scheduler().runAsync(() -> {
             boolean ok = storage.removeCustomScale(uuid);
             platform.scheduler().runSync(() -> {
                 if (ok) {
-                    PlayerProfile profile = profiles.get(uuid);
-                    if (profile != null) profile.setCustomScale(null);
-                    if (player.isOnline()) applyScale(player);
+                    if (profileAtCallTime != null && profiles.get(uuid) == profileAtCallTime) {
+                        profileAtCallTime.setCustomScale(null);
+                        if (player.isOnline()) applyScale(player);
+                    }
                     messenger.broadcast(SyncMessage.scaleRemoved(uuid, platform.serverId()));
                     if (onSuccess != null) onSuccess.run();
                 } else if (onFailure != null) {
@@ -379,6 +417,9 @@ public final class GrowthEngine {
 
     public void setGender(PlatformPlayer player, Gender gender, Runnable onSuccess, Runnable onFailure) {
         UUID uuid = player.uuid();
+        // See setCustomScale's comment on profileAtCallTime for why this is captured up front
+        // and compared by identity rather than re-fetched inside the runSync callback.
+        PlayerProfile profileAtCallTime = profiles.get(uuid);
         platform.scheduler().runAsync(() -> {
             boolean ok = storage.setGenderKey(uuid, gender.key());
             if (!ok) {
@@ -387,13 +428,15 @@ public final class GrowthEngine {
             }
 
             double newMax = genderRegistry.getMaxScaleFor(gender);
-            PlayerProfile profile = profiles.getOrCreate(uuid, genderRegistry.getDefault());
-            boolean scaleClamped = clampCustomScaleForNewGender(uuid, gender, profile.customScale(), newMax);
+            boolean scaleClamped = profileAtCallTime != null
+                    && clampCustomScaleForNewGender(uuid, gender, profileAtCallTime.customScale(), newMax);
 
             platform.scheduler().runSync(() -> {
-                profile.setGender(gender);
-                if (scaleClamped) profile.setCustomScale(newMax);
-                if (player.isOnline()) applyScale(player);
+                if (profileAtCallTime != null && profiles.get(uuid) == profileAtCallTime) {
+                    profileAtCallTime.setGender(gender);
+                    if (scaleClamped) profileAtCallTime.setCustomScale(newMax);
+                    if (player.isOnline()) applyScale(player);
+                }
                 messenger.broadcast(SyncMessage.genderSet(uuid, gender.key(), platform.serverId()));
                 if (onSuccess != null) onSuccess.run();
             });
@@ -467,6 +510,24 @@ public final class GrowthEngine {
         }
 
         return new OfflineProfile(gender, customScale, targetGrowthSeconds, playedSeconds);
+    }
+
+    /**
+     * Adds {@code secondsToAdd} on top of {@code uuid}'s existing playtime
+     * total in this server's own {@link #serverKey() bucket} (creating the
+     * row on their first record) rather than overwriting it - used by the
+     * {@code /fg migrate playtime} admin command to seed this plugin's
+     * tracking from a platform's own built-in playtime statistic. A no-op
+     * (returns {@code false}) for a non-positive amount, since there's
+     * nothing meaningful to add.
+     *
+     * <p><b>Blocking</b> - same contract as every other {@link Storage} call
+     * in this class (see {@link #loadOffline}); a caller migrating many
+     * players at once must run this off the main thread itself.</p>
+     */
+    public boolean addPlaytimeSeconds(UUID uuid, long secondsToAdd) {
+        if (secondsToAdd <= 0) return false;
+        return storage.addPlayTime(uuid, serverKey(), secondsToAdd, Instant.now().getEpochSecond());
     }
 
     /** The scale {@code profile} would be at if applied right now - mirrors {@link #applyScale}'s math exactly, since an offline player's played seconds are frozen (no live tick to drift from this snapshot). */

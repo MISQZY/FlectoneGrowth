@@ -2,6 +2,7 @@ package org.misqzy.flectonegrowth.common.storage.migration;
 
 import org.misqzy.flectonegrowth.common.config.migration.VersionComparator;
 import org.misqzy.flectonegrowth.common.storage.StorageType;
+import org.misqzy.flectonegrowth.common.storage.TableNames;
 
 import java.util.List;
 
@@ -39,11 +40,12 @@ public final class SchemaMigrations {
             new SchemaMigration() {
                 @Override public String targetVersion() { return "0.1.3"; }
 
-                @Override public List<String> statements(StorageType dialect) {
+                @Override public List<String> statements(StorageType dialect, TableNames tables) {
+                    String schemaVersionTable = tables.schemaVersion();
                     return switch (dialect) {
-                        case H2 -> List.of("ALTER TABLE flectonegrowth_schema_version ALTER COLUMN version VARCHAR(32)");
+                        case H2 -> List.of("ALTER TABLE " + schemaVersionTable + " ALTER COLUMN version VARCHAR(32)");
                         case MYSQL, MARIADB -> List.of(
-                                "ALTER TABLE flectonegrowth_schema_version MODIFY COLUMN version VARCHAR(32) NOT NULL");
+                                "ALTER TABLE " + schemaVersionTable + " MODIFY COLUMN version VARCHAR(32) NOT NULL");
                         case YAML -> List.of(); // no SQL schema to migrate
                     };
                 }
@@ -66,15 +68,16 @@ public final class SchemaMigrations {
             new SchemaMigration() {
                 @Override public String targetVersion() { return "0.2.1"; }
 
-                @Override public List<String> statements(StorageType dialect) {
+                @Override public List<String> statements(StorageType dialect, TableNames tables) {
+                    String playtimeTable = tables.playtime();
                     return switch (dialect) {
                         case H2 -> List.of(
-                                "ALTER TABLE flectonegrowth_playtime ADD COLUMN server VARCHAR(64) NOT NULL DEFAULT ''",
-                                "ALTER TABLE flectonegrowth_playtime DROP PRIMARY KEY",
-                                "ALTER TABLE flectonegrowth_playtime ADD PRIMARY KEY (uuid, server)");
+                                "ALTER TABLE " + playtimeTable + " ADD COLUMN server VARCHAR(64) NOT NULL DEFAULT ''",
+                                "ALTER TABLE " + playtimeTable + " DROP PRIMARY KEY",
+                                "ALTER TABLE " + playtimeTable + " ADD PRIMARY KEY (uuid, server)");
                         case MYSQL, MARIADB -> List.of(
-                                "ALTER TABLE flectonegrowth_playtime ADD COLUMN server VARCHAR(64) NOT NULL DEFAULT ''",
-                                "ALTER TABLE flectonegrowth_playtime DROP PRIMARY KEY, ADD PRIMARY KEY (uuid, server)");
+                                "ALTER TABLE " + playtimeTable + " ADD COLUMN server VARCHAR(64) NOT NULL DEFAULT ''",
+                                "ALTER TABLE " + playtimeTable + " DROP PRIMARY KEY, ADD PRIMARY KEY (uuid, server)");
                         case YAML -> List.of(); // no SQL schema to migrate
                     };
                 }

@@ -2,6 +2,7 @@ package org.misqzy.flectonegrowth.common.storage.migration;
 
 import org.misqzy.flectonegrowth.common.config.migration.VersionComparator;
 import org.misqzy.flectonegrowth.common.storage.StorageType;
+import org.misqzy.flectonegrowth.common.storage.TableNames;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -37,16 +38,17 @@ public final class SchemaVersionStore {
      * stamped with {@code pluginVersion} immediately rather than treated as
      * "run every migration ever written".
      *
-     * @param schemaVersionTable the (possibly custom-prefixed, see {@code TableNames}) name of the
-     *                           single-row version table {@code upsertSql} itself already targets
+     * @param tables the (possibly custom-prefixed) table names {@code upsertSql} and every migration
+     *               step's statements must target - see {@link TableNames}
      */
-    public static void migrateIfNeeded(Connection conn, StorageType dialect, String schemaVersionTable, String upsertSql,
+    public static void migrateIfNeeded(Connection conn, StorageType dialect, TableNames tables, String upsertSql,
                                         String pluginVersion, Logger logger, String storageName) throws SQLException {
+        String schemaVersionTable = tables.schemaVersion();
         String current = readOrInitVersion(conn, schemaVersionTable, upsertSql, pluginVersion);
         if (VersionComparator.compare(current, pluginVersion) >= 0) return;
 
         for (SchemaMigration step : SchemaMigrations.pending(current, pluginVersion)) {
-            SchemaMigrationRunner.run(conn, step.statements(dialect));
+            SchemaMigrationRunner.run(conn, step.statements(dialect, tables));
         }
         writeVersion(conn, upsertSql, pluginVersion);
         logger.info(storageName + " schema migrated from version " + current + " to " + pluginVersion + ".");

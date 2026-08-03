@@ -6,8 +6,8 @@ import org.misqzy.flectonegrowth.common.config.CoreConfig;
 import org.misqzy.flectonegrowth.common.domain.PlayerProfile;
 import org.misqzy.flectonegrowth.common.storage.Storage;
 
-import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Assigns each player's target growth time. In fixed mode everyone shares
@@ -19,8 +19,6 @@ import java.util.UUID;
  */
 @RequiredArgsConstructor
 public final class GrowthTimeAssigner {
-
-    private static final Random RANDOM = new Random();
 
     private final CoreConfig config;
     private final Storage storage;
@@ -48,7 +46,7 @@ public final class GrowthTimeAssigner {
         long min = config.growTimeMinSeconds();
         long max = config.growTimeMaxSeconds();
         long range = max - min;
-        long chosen = min + (range > 0 ? (long) RANDOM.nextInt((int) Math.min(range + 1, Integer.MAX_VALUE)) : 0);
+        long chosen = min + (range > 0 ? (long) ThreadLocalRandom.current().nextInt((int) Math.min(range + 1, Integer.MAX_VALUE)) : 0);
         return chosen;
     }
 }

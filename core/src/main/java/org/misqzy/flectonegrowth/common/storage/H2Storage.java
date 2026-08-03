@@ -11,7 +11,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -61,6 +63,10 @@ public final class H2Storage implements Storage {
         cfg.setMaximumPoolSize(5);
         cfg.setMinimumIdle(1);
         cfg.setConnectionTimeout(10_000L);
+        // Same safety net AbstractSqlStorage's pool gets - recordJoin below is the one method in
+        // this class managing its own PreparedStatements by hand instead of going through SqlOps,
+        // so leak detection here specifically covers a future edit reintroducing a leak there.
+        cfg.setLeakDetectionThreshold(60_000);
         cfg.setPoolName("FlectoneGrowth-H2");
 
         try {
@@ -70,7 +76,7 @@ public final class H2Storage implements Storage {
             migrateSchemaIfNeeded();
             return testConnection();
         } catch (Exception e) {
-            logger.severe("Failed to initialise H2 database: " + e.getMessage());
+            logger.log(Level.SEVERE, "Failed to initialise H2 database: " + e.getMessage(), e);
             return false;
         }
     }
@@ -81,7 +87,7 @@ public final class H2Storage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             return conn.isValid(5);
         } catch (SQLException e) {
-            logger.warning("H2 connection test failed: " + e.getMessage());
+            logger.log(Level.WARNING, "H2 connection test failed: " + e.getMessage(), e);
             return false;
         }
     }
@@ -102,31 +108,32 @@ public final class H2Storage implements Storage {
 
     private void createTables() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            conn.prepareStatement(
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.scales() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, scale DOUBLE NOT NULL, " +
-                            "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-            ).executeUpdate();
-            conn.prepareStatement(
+                            "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.genders() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, gender_key VARCHAR(32) NOT NULL DEFAULT 'male', " +
-                            "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-            ).executeUpdate();
-            conn.prepareStatement(
+                            "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.growthTime() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, growth_seconds BIGINT NOT NULL, " +
-                            "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-            ).executeUpdate();
-            conn.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS " + tables.schemaVersion() + " (id INT PRIMARY KEY, version VARCHAR(32) NOT NULL)"
-            ).executeUpdate();
-            conn.prepareStatement(
+                            "valid BOOLEAN NOT NULL DEFAULT TRUE, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+            executeUpdate(conn,
+                    "CREATE TABLE IF NOT EXISTS " + tables.schemaVersion() + " (id INT PRIMARY KEY, version VARCHAR(32) NOT NULL)");
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.playtime() + " (" +
                             "uuid VARCHAR(36) NOT NULL, server VARCHAR(64) NOT NULL DEFAULT '', " +
                             "first_seen BIGINT NOT NULL, last_seen BIGINT NOT NULL, " +
                             "total_seconds BIGINT NOT NULL DEFAULT 0, sessions INT NOT NULL DEFAULT 0, " +
-                            "PRIMARY KEY (uuid, server))"
-            ).executeUpdate();
+                            "PRIMARY KEY (uuid, server))");
+        }
+    }
+
+    private static void executeUpdate(Connection conn, String sql) throws SQLException {
+        try (PreparedStatement statement = conn.prepareStatement(sql)) {
+            statement.executeUpdate();
         }
     }
 
@@ -138,7 +145,7 @@ public final class H2Storage implements Storage {
      */
     private void migrateSchemaIfNeeded() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            SchemaVersionStore.migrateIfNeeded(conn, StorageType.H2, tables.schemaVersion(), upsertSchemaVersionSql, pluginVersion, logger, "H2");
+            SchemaVersionStore.migrateIfNeeded(conn, StorageType.H2, tables, upsertSchemaVersionSql, pluginVersion, logger, "H2");
         }
     }
 
@@ -187,7 +194,7 @@ public final class H2Storage implements Storage {
                         "VALUES (?, ?, TRUE, CURRENT_TIMESTAMP)",
                 stmt -> {
                     stmt.setString(1, uuid.toString());
-                    stmt.setString(2, genderKey.toLowerCase());
+                    stmt.setString(2, genderKey.toLowerCase(Locale.ROOT));
                 },
                 logger, "H2", "setGenderKey");
     }
@@ -268,7 +275,7 @@ public final class H2Storage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.severe("H2 recordJoin: " + e.getMessage());
+            logger.log(Level.SEVERE, "H2 recordJoin: " + e.getMessage(), e);
             return false;
         }
     }
@@ -284,5 +291,43 @@ public final class H2Storage implements Storage {
                     stmt.setString(4, server);
                 },
                 logger, "H2", "checkpointPlayTime");
+    }
+
+    /** Same read-then-carry-forward shape as {@link #recordJoin} - H2's {@code MERGE INTO} can't express "add to the existing total" in one statement either. */
+    @Override
+    public boolean addPlayTime(UUID uuid, String server, long secondsToAdd, long nowEpochSeconds) {
+        try (Connection conn = dataSource.getConnection()) {
+            PlayTime existing;
+            try (PreparedStatement select = conn.prepareStatement(
+                    "SELECT first_seen, last_seen, total_seconds, sessions FROM " + tables.playtime() + " WHERE uuid = ? AND server = ?")) {
+                select.setString(1, uuid.toString());
+                select.setString(2, server);
+                try (ResultSet rs = select.executeQuery()) {
+                    existing = rs.next()
+                            ? new PlayTime(rs.getLong("first_seen"), rs.getLong("last_seen"), rs.getLong("total_seconds"), rs.getInt("sessions"))
+                            : null;
+                }
+            }
+
+            long firstSeen = existing != null ? existing.first() : nowEpochSeconds;
+            long totalSeconds = (existing != null ? existing.total() : 0L) + secondsToAdd;
+            int sessions = existing != null ? existing.sessions() : 0;
+
+            try (PreparedStatement merge = conn.prepareStatement(
+                    "MERGE INTO " + tables.playtime() + " (uuid, server, first_seen, last_seen, total_seconds, sessions) KEY(uuid, server) " +
+                            "VALUES (?, ?, ?, ?, ?, ?)")) {
+                merge.setString(1, uuid.toString());
+                merge.setString(2, server);
+                merge.setLong(3, firstSeen);
+                merge.setLong(4, nowEpochSeconds);
+                merge.setLong(5, totalSeconds);
+                merge.setInt(6, sessions);
+                merge.executeUpdate();
+            }
+            return true;
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "H2 addPlayTime: " + e.getMessage(), e);
+            return false;
+        }
     }
 }

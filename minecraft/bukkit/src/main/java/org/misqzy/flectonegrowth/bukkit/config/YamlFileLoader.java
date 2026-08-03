@@ -17,6 +17,10 @@ public final class YamlFileLoader {
     private YamlFileLoader() {}
 
     public static ConfigView load(File file) {
+        if (!file.isFile()) {
+            throw new IllegalStateException("Required resource is missing, expected it at: " + file
+                    + " - if this was deleted or failed to install, try removing the plugin's data folder and restarting.");
+        }
         try (InputStreamReader reader = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
             Object loaded = new Yaml().load(reader);
             return new YamlConfigView(loaded instanceof Map<?, ?> map ? map : Map.of());

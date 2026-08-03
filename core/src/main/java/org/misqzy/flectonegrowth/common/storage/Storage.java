@@ -47,4 +47,13 @@ public interface Storage {
     boolean recordJoin(UUID uuid, String server, long nowEpochSeconds);
     /** Persists an updated running total and resets the checkpoint - used at quit. */
     boolean checkpointPlayTime(UUID uuid, String server, long totalSeconds, long nowEpochSeconds);
+    /**
+     * Adds {@code secondsToAdd} on top of any existing {@code total_seconds}
+     * (creating the row if absent: first=last=now, sessions=0), unlike
+     * {@link #checkpointPlayTime}'s absolute overwrite - used by playtime
+     * migration/import tooling (e.g. seeding this tracking from a platform's
+     * own built-in playtime statistic) that must never clobber a total
+     * that's already being tracked.
+     */
+    boolean addPlayTime(UUID uuid, String server, long secondsToAdd, long nowEpochSeconds);
 }

@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Locale;
 import java.util.logging.Logger;
 
 /**
@@ -77,7 +78,7 @@ public final class LegacyTableMigration {
         try (ResultSet rs = meta.getTables(null, null, tableName, null)) {
             if (rs.next()) return true;
         }
-        try (ResultSet rs = meta.getTables(null, null, tableName.toUpperCase(), null)) {
+        try (ResultSet rs = meta.getTables(null, null, tableName.toUpperCase(Locale.ROOT), null)) {
             return rs.next();
         }
     }

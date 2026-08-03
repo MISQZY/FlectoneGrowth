@@ -116,7 +116,11 @@ public final class FlectoneGrowthCore {
 
         Storage oldStorage = storage;
         Storage newStorage = storage;
-        boolean storageChanged = storage.type() != newConfig.storageType();
+        // Comparing only the storage *type* would miss an admin editing DB host/port/credentials/
+        // database name/table-prefix while keeping the same backend - that used to leave the old
+        // connection pool running against the old settings until a full restart, with nothing
+        // telling the admin their edit didn't take effect.
+        boolean storageChanged = storage.type() != newConfig.storageType() || connectionSettingsChanged(config, newConfig);
         if (storageChanged) {
             newStorage = initStorage(platform.logger(), platform.dataFolder(), newConfig);
         }
@@ -137,6 +141,22 @@ public final class FlectoneGrowthCore {
         if (storageChanged) oldStorage.close();
     }
 
+    /** Whether any DB connection detail {@link #reload} would otherwise silently keep using has changed - see the call site's comment. */
+    private static boolean connectionSettingsChanged(CoreConfig oldConfig, CoreConfig newConfig) {
+        return !oldConfig.dbHost().equals(newConfig.dbHost())
+                || oldConfig.dbPort() != newConfig.dbPort()
+                || !oldConfig.dbName().equals(newConfig.dbName())
+                || !oldConfig.dbUsername().equals(newConfig.dbUsername())
+                || !oldConfig.dbPassword().equals(newConfig.dbPassword())
+                || !oldConfig.dbTablePrefix().equals(newConfig.dbTablePrefix())
+                || !oldConfig.dbParams().equals(newConfig.dbParams())
+                || oldConfig.maxPoolSize() != newConfig.maxPoolSize()
+                || oldConfig.minIdle() != newConfig.minIdle()
+                || oldConfig.connectionTimeoutMs() != newConfig.connectionTimeoutMs()
+                || oldConfig.idleTimeoutMs() != newConfig.idleTimeoutMs()
+                || oldConfig.maxLifetimeMs() != newConfig.maxLifetimeMs();
+    }
+
     public void shutdown() {
         if (storage != null) storage.close();
     }
@@ -145,7 +165,17 @@ public final class FlectoneGrowthCore {
         return injector.getInstance(GrowthEngine.class);
     }
 
-    /** {@code gender}'s configured display name (falls back to its key if none is configured) - the composition every caller needs {@link GenderRegistry#resolveDisplayName} for, in one place instead of each re-wiring {@code messages()::rawOrNull} into it. */
+    /**
+     * {@code gender}'s configured display name in config.yml's default
+     * locale (falls back to its key if none is configured) - the
+     * composition every caller needs {@link GenderRegistry#resolveDisplayName}
+     * for, in one place instead of each re-wiring {@code messages()::rawOrNull}
+     * into it. For a caller rendering a message in a specific recipient's own
+     * locale (e.g. a command reply - see {@link #genderDisplayName(Gender, String)}),
+     * use the locale-taking overload instead, or this value ends up mismatched
+     * against the rest of that message's locale. Callers with no single
+     * recipient to localize for (the public API, PlaceholderAPI) use this one.
+     */
     public String genderDisplayName(Gender gender) {
         return genderRegistry.resolveDisplayName(gender, messages::rawOrNull);
     }
@@ -153,5 +183,15 @@ public final class FlectoneGrowthCore {
     /** {@code player}'s *current* gender's display name - see {@link #genderDisplayName(Gender)}. */
     public String genderDisplayName(PlatformPlayer player) {
         return genderDisplayName(growthEngine().genderOf(player));
+    }
+
+    /** {@code gender}'s configured display name in {@code locale} (or config.yml's default when {@code locale} is {@code null}/not loaded) - see {@link #genderDisplayName(Gender)}. */
+    public String genderDisplayName(Gender gender, String locale) {
+        return genderRegistry.resolveDisplayName(gender, key -> messages.rawOrNull(locale, key));
+    }
+
+    /** {@code player}'s *current* gender's display name in {@code locale} - see {@link #genderDisplayName(Gender, String)}. */
+    public String genderDisplayName(PlatformPlayer player, String locale) {
+        return genderDisplayName(growthEngine().genderOf(player), locale);
     }
 }

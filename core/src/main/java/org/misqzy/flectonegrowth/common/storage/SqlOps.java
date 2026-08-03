@@ -5,6 +5,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -42,7 +43,7 @@ final class SqlOps {
                 return rs.next() ? mapper.map(rs) : notFound;
             }
         } catch (SQLException e) {
-            logger.severe(storageName + " " + op + ": " + e.getMessage());
+            logger.log(Level.SEVERE, storageName + " " + op + ": " + e.getMessage(), e);
             return notFound;
         }
     }
@@ -56,7 +57,7 @@ final class SqlOps {
             stmt.executeUpdate();
             return true;
         } catch (SQLException e) {
-            logger.severe(storageName + " " + op + ": " + e.getMessage());
+            logger.log(Level.SEVERE, storageName + " " + op + ": " + e.getMessage(), e);
             return false;
         }
     }

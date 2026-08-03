@@ -8,7 +8,9 @@ import org.misqzy.flectonegrowth.common.storage.migration.SchemaVersionStore;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -62,7 +64,7 @@ public abstract class AbstractSqlStorage implements Storage {
             migrateSchemaIfNeeded();
             return testConnection();
         } catch (Exception e) {
-            logger.severe("Failed to initialise " + storageName() + ": " + e.getMessage());
+            logger.log(Level.SEVERE, "Failed to initialise " + storageName() + ": " + e.getMessage(), e);
             return false;
         }
     }
@@ -73,7 +75,7 @@ public abstract class AbstractSqlStorage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             return conn.isValid(5);
         } catch (SQLException e) {
-            logger.warning(storageName() + " connection test failed: " + e.getMessage());
+            logger.log(Level.WARNING, storageName() + " connection test failed: " + e.getMessage(), e);
             return false;
         }
     }
@@ -90,43 +92,41 @@ public abstract class AbstractSqlStorage implements Storage {
         }
     }
 
+    private static final String TABLE_SUFFIX = ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
     private void createTables() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            conn.prepareStatement(
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.scales() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, scale DOUBLE NOT NULL, valid TINYINT(1) NOT NULL DEFAULT 1, " +
-                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            ).executeUpdate();
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" + TABLE_SUFFIX);
 
-            conn.prepareStatement(
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.genders() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, gender_key VARCHAR(32) NOT NULL DEFAULT 'male', valid TINYINT(1) NOT NULL DEFAULT 1, " +
-                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            ).executeUpdate();
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" + TABLE_SUFFIX);
 
-            conn.prepareStatement(
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.growthTime() + " (" +
                             "uuid VARCHAR(36) PRIMARY KEY, growth_seconds BIGINT NOT NULL, valid TINYINT(1) NOT NULL DEFAULT 1, " +
-                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            ).executeUpdate();
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" + TABLE_SUFFIX);
 
-            conn.prepareStatement(
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.schemaVersion() + " (" +
-                            "id INT PRIMARY KEY, version VARCHAR(32) NOT NULL" +
-                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            ).executeUpdate();
+                            "id INT PRIMARY KEY, version VARCHAR(32) NOT NULL" + TABLE_SUFFIX);
 
-            conn.prepareStatement(
+            executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.playtime() + " (" +
                             "uuid VARCHAR(36) NOT NULL, server VARCHAR(64) NOT NULL DEFAULT '', " +
                             "first_seen BIGINT NOT NULL, last_seen BIGINT NOT NULL, " +
                             "total_seconds BIGINT NOT NULL DEFAULT 0, sessions INT NOT NULL DEFAULT 0, " +
-                            "PRIMARY KEY (uuid, server)" +
-                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-            ).executeUpdate();
+                            "PRIMARY KEY (uuid, server)" + TABLE_SUFFIX);
+        }
+    }
+
+    private static void executeUpdate(Connection conn, String sql) throws SQLException {
+        try (var statement = conn.prepareStatement(sql)) {
+            statement.executeUpdate();
         }
     }
 
@@ -138,7 +138,7 @@ public abstract class AbstractSqlStorage implements Storage {
      */
     private void migrateSchemaIfNeeded() throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
-            SchemaVersionStore.migrateIfNeeded(conn, type(), tables.schemaVersion(), upsertSchemaVersionSql, pluginVersion, logger, storageName());
+            SchemaVersionStore.migrateIfNeeded(conn, type(), tables, upsertSchemaVersionSql, pluginVersion, logger, storageName());
         }
     }
 
@@ -187,7 +187,7 @@ public abstract class AbstractSqlStorage implements Storage {
                         "ON DUPLICATE KEY UPDATE gender_key = VALUES(gender_key), valid = 1, updated_at = NOW()",
                 stmt -> {
                     stmt.setString(1, uuid.toString());
-                    stmt.setString(2, genderKey.toLowerCase());
+                    stmt.setString(2, genderKey.toLowerCase(Locale.ROOT));
                 },
                 logger, storageName(), "setGenderKey");
     }
@@ -253,5 +253,21 @@ public abstract class AbstractSqlStorage implements Storage {
                     stmt.setString(4, server);
                 },
                 logger, storageName(), "checkpointPlayTime");
+    }
+
+    @Override
+    public boolean addPlayTime(UUID uuid, String server, long secondsToAdd, long nowEpochSeconds) {
+        return SqlOps.update(dataSource,
+                "INSERT INTO " + tables.playtime() + " (uuid, server, first_seen, last_seen, total_seconds, sessions) " +
+                        "VALUES (?, ?, ?, ?, ?, 0) " +
+                        "ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen), total_seconds = total_seconds + VALUES(total_seconds)",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, server);
+                    stmt.setLong(3, nowEpochSeconds);
+                    stmt.setLong(4, nowEpochSeconds);
+                    stmt.setLong(5, secondsToAdd);
+                },
+                logger, storageName(), "addPlayTime");
     }
 }
