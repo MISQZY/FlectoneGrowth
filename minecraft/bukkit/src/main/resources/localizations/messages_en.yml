@@ -18,7 +18,7 @@ command:
   invalid-syntax: |-
     <secondary>|</secondary>
     <secondary>|</secondary> <secondary>Usage →</secondary>
-    <secondary>|</secondary> <primary><syntax></primary>
+    <secondary>|</secondary> <primary><usage></primary>
     <secondary>|</secondary>
 
 height:
@@ -43,6 +43,7 @@ growth-info:
   gender: '<secondary>Gender: <primary><gender>'
   max-reached: '<primary>Fully grown.</primary>'
   remaining: '<secondary>Time remaining: <primary><time>'
+  unknown-player: '<red>No player named "<secondary><player></secondary><red>" has ever been seen on this server.'
 
 admin:
   reloaded: '<primary><secondary>FlectoneGrowth</secondary><primary> configuration successfully reloaded! (<secondary><time></secondary><primary>).'

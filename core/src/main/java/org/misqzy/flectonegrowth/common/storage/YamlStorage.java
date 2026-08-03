@@ -69,6 +69,7 @@ public final class YamlStorage implements Storage {
             section("genders");
             section("growth-times");
             section("playtimes");
+            section("players");
             return true;
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Failed to initialise YAML storage: " + e.getMessage(), e);
@@ -324,6 +325,57 @@ public final class YamlStorage implements Storage {
             return false;
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Player identity (no surrogate-id/FK model here - a flat file has no
+    // join cost to optimise away, so this is just a uuid-keyed username map
+    // alongside the sections above)
+    // -----------------------------------------------------------------------
+
+    @Override
+    public boolean upsertUsername(UUID uuid, String username) {
+        lock.writeLock().lock();
+        try {
+            Map<String, Object> entry = newEntry();
+            entry.put("username", username);
+            section("players").put(uuid.toString(), entry);
+            persist();
+            return true;
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "YAML upsertUsername: " + e.getMessage(), e);
+            return false;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public String getUsername(UUID uuid) {
+        lock.readLock().lock();
+        try {
+            Map<?, ?> entry = entry(section("players"), uuid);
+            Object v = entry != null ? entry.get("username") : null;
+            return v != null ? String.valueOf(v) : null;
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /** Linear scan - fine here, YAML storage is explicitly single-server/small-scale (see class javadoc). */
+    @Override
+    public UUID findUuidByUsername(String username) {
+        lock.readLock().lock();
+        try {
+            for (Map.Entry<String, Object> e : section("players").entrySet()) {
+                if (!(e.getValue() instanceof Map<?, ?> entry)) continue;
+                Object v = entry.get("username");
+                if (v != null && String.valueOf(v).equalsIgnoreCase(username)) return UUID.fromString(e.getKey());
+            }
+            return null;
+        } finally {
+            lock.readLock().unlock();
         }
     }
 

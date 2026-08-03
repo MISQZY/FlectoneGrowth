@@ -1,7 +1,31 @@
-# FlectoneGrowth — Release Notes (v0.1.1 → v0.2.6)
+# FlectoneGrowth — Release Notes (v0.1.1 → v0.2.7)
 
 A summary of everything new for players and server owners since v0.1.1,
 newest first.
+
+---
+
+## v0.2.7
+
+- **`/growth summary`/`height`/`gender <target>` now work for offline
+  players too** - just type their username. Previously these commands could
+  only look up someone currently online.
+- **Command-syntax hints are now clickable.** The usage line shown after
+  mistyping a command now fills your chat input with the correct command
+  instead of just displaying it as text.
+- Finished the locale-per-recipient fix started in v0.2.6: PlaceholderAPI's
+  height-unit and remaining-growth-time placeholders, and `/growth height`'s
+  unit label, now also render in the viewing player's own client language
+  instead of always falling back to config.yml's configured default.
+- **Database change: player UUIDs are now stored in one dedicated table**
+  instead of being duplicated across every table, with usernames tracked
+  there too (kept up to date on every join) - this is what makes offline
+  username lookups above possible. Upgrading runs an automatic one-time
+  migration on first startup.
+  **Back up your database before upgrading to this version** - the
+  migration restructures every existing table (MySQL/MariaDB do not support
+  transactional DDL, so a failure partway through could leave a table
+  half-migrated).
 
 ---
 

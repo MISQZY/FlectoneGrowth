@@ -56,4 +56,14 @@ public interface Storage {
      * that's already being tracked.
      */
     boolean addPlayTime(UUID uuid, String server, long secondsToAdd, long nowEpochSeconds);
+
+    // Player identity (backing table every other one now references by FK -
+    // see the "player" table). Get-or-create semantics: any of the above
+    // writes will silently no-op until a player row exists for that uuid.
+    /** Get-or-create the player row for {@code uuid} and (re)stamp its username - idempotent, safe to call on every join. */
+    boolean upsertUsername(UUID uuid, String username);
+    /** Last-known username for {@code uuid}, or {@code null} if never captured (e.g. a migration-backfilled row nobody has rejoined under yet). */
+    String getUsername(UUID uuid);
+    /** Case-insensitive username -> uuid lookup, or {@code null} if no player row matches. */
+    UUID findUuidByUsername(String username);
 }

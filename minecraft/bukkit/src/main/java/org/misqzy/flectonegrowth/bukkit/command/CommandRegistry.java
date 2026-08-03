@@ -14,6 +14,7 @@ import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages;
 import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthPlugin;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.domain.Gender;
+import org.misqzy.flectonegrowth.common.lang.Messages;
 import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.common.service.ScaleMath;
 
@@ -91,8 +92,14 @@ public final class CommandRegistry {
 
         manager.exceptionController().registerHandler(InvalidSyntaxException.class, ctx -> {
             CommandSender sender = ctx.context().sender();
+            String syntax = ctx.exception().correctSyntax();
+            // MiniMessage can't resolve a placeholder nested inside another tag's own
+            // argument (<click:suggest_command:'<syntax>'> would leave "<syntax>" as
+            // literal text) - the whole <click>...</click> fragment has to be built here
+            // and handed through as RawMarkup so it's re-parsed as markup, not escaped text.
+            String usageMarkup = "<click:suggest_command:'" + syntax.replace("'", "\\'") + "'>" + syntax + "</click>";
             FlectoneGrowthMessages.send(core, sender, "command.invalid-syntax",
-                    Map.of("syntax", ctx.exception().correctSyntax()));
+                    Map.of("usage", new Messages.RawMarkup(usageMarkup)));
         });
         // Without this, a sender lacking the command's @Permission got no feedback at all -
         // Cloud's ExecutionCoordinator has no built-in default for this exception type either.
@@ -112,7 +119,7 @@ public final class CommandRegistry {
         AnnotationParser<CommandSender> parser = new AnnotationParser<>(manager, CommandSender.class);
         parser.parse(new HeightCommand(core));
         parser.parse(new GenderCommand(core));
-        parser.parse(new GrowthCommand(core));
+        parser.parse(new GrowthCommand(plugin, core));
         parser.parse(new PluginAdminCommand(plugin));
         parser.parse(new MigrateCommand(plugin, core));
     }

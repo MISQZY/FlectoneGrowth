@@ -4,6 +4,7 @@ import org.misqzy.flectonegrowth.common.config.migration.VersionComparator;
 import org.misqzy.flectonegrowth.common.storage.StorageType;
 import org.misqzy.flectonegrowth.common.storage.TableNames;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -80,6 +81,100 @@ public final class SchemaMigrations {
                                 "ALTER TABLE " + playtimeTable + " DROP PRIMARY KEY, ADD PRIMARY KEY (uuid, server)");
                         case YAML -> List.of(); // no SQL schema to migrate
                     };
+                }
+            },
+            /*
+             * Introduces a dedicated flectonegrowth_player table (auto-increment
+             * id, unique uuid, username) so a player's name can finally be
+             * persisted (needed to look someone up by username while they're
+             * offline - see GrowthEngine.resolveUuidByUsername) and so
+             * scales/genders/growth_time/playtime stop each storing their own
+             * copy of the uuid. Those four tables swap their uuid column for a
+             * 4-byte player_id FK into the new table.
+             *
+             * Every uuid already present in any of the four tables gets a
+             * player row backfilled with username = NULL - there's nothing to
+             * backfill it with (no username was ever persisted before this
+             * version), so it's left to fill in passively the next time that
+             * player joins (see GrowthEngine.loadPlayer's storage.upsertUsername
+             * call). A fresh install's CREATE TABLE IF NOT EXISTS already builds
+             * this shape directly.
+             *
+             * Also drops scales/genders/growth_time's updated_at column - it was
+             * written on every insert/update but never read anywhere, dead weight
+             * riding along for the ride. playtime never had this column.
+             */
+            new SchemaMigration() {
+                @Override public String targetVersion() { return "0.2.7"; }
+
+                @Override public List<String> statements(StorageType dialect, TableNames tables) {
+                    String playerTable = tables.player();
+                    String scalesTable = tables.scales();
+                    String gendersTable = tables.genders();
+                    String growthTimeTable = tables.growthTime();
+                    String playtimeTable = tables.playtime();
+
+                    // MySQL/MariaDB's fresh-install player table (AbstractSqlStorage.createTables()) carries an
+                    // explicit ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 suffix so it matches every other table it
+                    // creates rather than whatever the server's own default happens to be - match that here too.
+                    String createPlayerTable = "CREATE TABLE IF NOT EXISTS " + playerTable + " (" +
+                            "id INT AUTO_INCREMENT PRIMARY KEY, uuid VARCHAR(36) NOT NULL UNIQUE, username VARCHAR(16))"
+                            + (dialect == StorageType.H2 ? "" : " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+                    List<String> setup = List.of(
+                            createPlayerTable,
+                            "INSERT INTO " + playerTable + " (uuid) " +
+                                    "SELECT DISTINCT uuid FROM (" +
+                                    "SELECT uuid FROM " + scalesTable +
+                                    " UNION SELECT uuid FROM " + gendersTable +
+                                    " UNION SELECT uuid FROM " + growthTimeTable +
+                                    " UNION SELECT uuid FROM " + playtimeTable +
+                                    ") all_uuids WHERE uuid NOT IN (SELECT uuid FROM " + playerTable + ")");
+
+                    boolean h2 = dialect == StorageType.H2;
+                    return switch (dialect) {
+                        // updated_at (scales/genders/growth_time only - playtime never had it) is dropped
+                        // in the same step: nothing ever read it (write-only column), and this step already
+                        // rewrites these three tables' shape, so there's no reason to wait for a separate one.
+                        case H2, MYSQL, MARIADB -> concat(setup,
+                                swapUuidForPlayerId(scalesTable, playerTable, "player_id", h2),
+                                dropUpdatedAt(scalesTable),
+                                swapUuidForPlayerId(gendersTable, playerTable, "player_id", h2),
+                                dropUpdatedAt(gendersTable),
+                                swapUuidForPlayerId(growthTimeTable, playerTable, "player_id", h2),
+                                dropUpdatedAt(growthTimeTable),
+                                swapUuidForPlayerId(playtimeTable, playerTable, "player_id, server", h2));
+                        case YAML -> List.of(); // no SQL schema to migrate - see YamlStorage's own "players" section
+                    };
+                }
+
+                private List<String> dropUpdatedAt(String table) {
+                    return List.of("ALTER TABLE " + table + " DROP COLUMN updated_at");
+                }
+
+                /** {@code newPrimaryKey} is {@code "player_id"} for the four single-key tables, {@code "player_id, server"} for playtime's composite key. */
+                private List<String> swapUuidForPlayerId(String table, String playerTable, String newPrimaryKey, boolean h2) {
+                    List<String> statements = new ArrayList<>(List.of(
+                            "ALTER TABLE " + table + " ADD COLUMN player_id INT",
+                            "UPDATE " + table + " SET player_id = (SELECT id FROM " + playerTable + " WHERE " + playerTable + ".uuid = " + table + ".uuid)"));
+                    if (h2) {
+                        statements.add("ALTER TABLE " + table + " ALTER COLUMN player_id SET NOT NULL");
+                        statements.add("ALTER TABLE " + table + " DROP PRIMARY KEY");
+                        statements.add("ALTER TABLE " + table + " ADD PRIMARY KEY (" + newPrimaryKey + ")");
+                    } else {
+                        statements.add("ALTER TABLE " + table + " MODIFY COLUMN player_id INT NOT NULL");
+                        statements.add("ALTER TABLE " + table + " DROP PRIMARY KEY, ADD PRIMARY KEY (" + newPrimaryKey + ")");
+                    }
+                    statements.add("ALTER TABLE " + table + " ADD CONSTRAINT fk_" + table + "_player FOREIGN KEY (player_id) REFERENCES " + playerTable + "(id)");
+                    statements.add("ALTER TABLE " + table + " DROP COLUMN uuid");
+                    return statements;
+                }
+
+                @SafeVarargs
+                private List<String> concat(List<String> first, List<String>... rest) {
+                    List<String> combined = new ArrayList<>(first);
+                    for (List<String> more : rest) combined.addAll(more);
+                    return combined;
                 }
             }
     );

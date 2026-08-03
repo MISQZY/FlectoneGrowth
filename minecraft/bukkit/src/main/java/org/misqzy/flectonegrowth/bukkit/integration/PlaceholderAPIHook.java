@@ -12,6 +12,7 @@ import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.common.service.ScaleMath;
 import org.misqzy.flectonegrowth.bukkit.BuildVersion;
 import org.misqzy.flectonegrowth.bukkit.BukkitPlayerAdapter;
+import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages;
 
 import java.util.List;
 import java.util.Locale;
@@ -85,12 +86,16 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
         GrowthEngine engine = core.growthEngine();
 
         if (offlinePlayer instanceof Player player && player.isOnline()) {
-            return resolveOnline(engine, new BukkitPlayerAdapter(player), params);
+            String locale = FlectoneGrowthMessages.resolveLocale(core, player);
+            return resolveOnline(engine, new BukkitPlayerAdapter(player), params, locale);
         }
-        return resolveOffline(engine, offlinePlayer, params);
+        // The subject has no connection of their own to read a client locale from - PAPI
+        // gives no separate "viewer" to fall back to either, so this renders in
+        // config.yml's configured default, same as every other no-recipient case.
+        return resolveOffline(engine, offlinePlayer, params, null);
     }
 
-    private String resolveOnline(GrowthEngine engine, BukkitPlayerAdapter target, String params) {
+    private String resolveOnline(GrowthEngine engine, BukkitPlayerAdapter target, String params, String locale) {
         return resolve(params, new GrowthData(
                 () -> engine.effectiveScale(target),
                 engine::minScale,
@@ -100,7 +105,7 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
                 () -> engine.growthProgress(target),
                 () -> engine.isAtMaxGrowth(target),
                 () -> engine.hasCustomScale(target)
-        ));
+        ), locale);
     }
 
     /**
@@ -111,7 +116,7 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
      * tradeoff. Lets leaderboard/hologram plugins showing offline players
      * get real data instead of PAPI's usual empty-string default.
      */
-    private String resolveOffline(GrowthEngine engine, OfflinePlayer offlinePlayer, String params) {
+    private String resolveOffline(GrowthEngine engine, OfflinePlayer offlinePlayer, String params, String locale) {
         OfflineProfile profile = loadOfflineCached(engine, offlinePlayer.getUniqueId());
         return resolve(params, new GrowthData(
                 () -> engine.effectiveScale(profile),
@@ -122,7 +127,7 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
                 () -> engine.growthProgress(profile),
                 () -> engine.isAtMaxGrowth(profile),
                 profile::hasCustomScale
-        ));
+        ), locale);
     }
 
     /** Serves a storage read from {@link #offlineCache} if it's still fresh, else fetches and caches a new one - see the field javadoc above. */
@@ -155,10 +160,10 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
      * a single placeholder (PAPI's normal usage - one {@code onRequest} call
      * per placeholder) still only evaluates the one figure it actually needs.
      */
-    private String resolve(String params, GrowthData data) {
+    private String resolve(String params, GrowthData data, String locale) {
         return switch (params.toLowerCase(Locale.ROOT)) {
             case "height" -> ScaleMath.formatValue(data.current().getAsDouble());
-            case "height_full" -> ScaleMath.format(data.current().getAsDouble(), core.messages().heightUnit());
+            case "height_full" -> ScaleMath.format(data.current().getAsDouble(), core.messages().heightUnit(locale));
             case "height_min" -> ScaleMath.formatValue(data.min().getAsDouble());
             case "height_max" -> ScaleMath.formatValue(data.max().getAsDouble());
             case "scale" -> ScaleMath.formatRaw(data.current().getAsDouble());
@@ -166,7 +171,7 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
             case "scale_max" -> ScaleMath.formatRaw(data.max().getAsDouble());
             case "gender" -> data.genderDisplayName().get();
             case "growth_remaining_seconds" -> String.valueOf(data.secondsRemaining().getAsLong());
-            case "growth_remaining_formatted" -> TimeFormatter.format(data.secondsRemaining().getAsLong(), core.messages());
+            case "growth_remaining_formatted" -> TimeFormatter.format(data.secondsRemaining().getAsLong(), core.messages(), locale);
             case "growth_percentage" -> ScaleMath.formatPercentage(data.progress().getAsDouble());
             case "growth_max_reached" -> String.valueOf(data.atMax().getAsBoolean());
             case "growth_active" -> String.valueOf(!data.atMax().getAsBoolean() && !data.hasCustomScale().getAsBoolean());

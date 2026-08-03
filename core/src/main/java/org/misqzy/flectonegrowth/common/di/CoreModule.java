@@ -11,6 +11,7 @@ import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.config.CoreConfig;
 import org.misqzy.flectonegrowth.common.domain.GenderRegistry;
 import org.misqzy.flectonegrowth.common.domain.ProfileCache;
+import org.misqzy.flectonegrowth.common.domain.UsernameCache;
 import org.misqzy.flectonegrowth.common.storage.Storage;
 
 /**
@@ -36,6 +37,7 @@ public final class CoreModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(ProfileCache.class).in(Singleton.class);
+        bind(UsernameCache.class).in(Singleton.class);
     }
 
     @Provides

@@ -35,4 +35,5 @@ public record TableNames(String prefix) {
     public String growthTime() { return prefix + "growth_time"; }
     public String schemaVersion() { return prefix + "schema_version"; }
     public String playtime() { return prefix + "playtime"; }
+    public String player() { return prefix + "player"; }
 }

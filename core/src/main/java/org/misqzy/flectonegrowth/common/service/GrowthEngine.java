@@ -13,6 +13,7 @@ import org.misqzy.flectonegrowth.common.domain.OfflineProfile;
 import org.misqzy.flectonegrowth.common.domain.PlayTime;
 import org.misqzy.flectonegrowth.common.domain.PlayerProfile;
 import org.misqzy.flectonegrowth.common.domain.ProfileCache;
+import org.misqzy.flectonegrowth.common.domain.UsernameCache;
 import org.misqzy.flectonegrowth.common.network.NetworkMessenger;
 import org.misqzy.flectonegrowth.common.network.SyncMessage;
 import org.misqzy.flectonegrowth.common.platform.Platform;
@@ -44,6 +45,7 @@ public final class GrowthEngine {
 
     private final Platform platform;
     private final ProfileCache profiles;
+    private final UsernameCache usernames;
     private final NetworkMessenger messenger;
     private final PlayerLookup playerLookup;
 
@@ -56,10 +58,11 @@ public final class GrowthEngine {
     private volatile PlayTimeTracker playTimeTracker;
 
     @Inject
-    public GrowthEngine(Platform platform, ProfileCache profiles, NetworkMessenger messenger, PlayerLookup playerLookup,
-                         CoreConfig config, Storage storage, GenderRegistry genderRegistry) {
+    public GrowthEngine(Platform platform, ProfileCache profiles, UsernameCache usernames, NetworkMessenger messenger,
+                         PlayerLookup playerLookup, CoreConfig config, Storage storage, GenderRegistry genderRegistry) {
         this.platform = platform;
         this.profiles = profiles;
+        this.usernames = usernames;
         this.messenger = messenger;
         this.playerLookup = playerLookup;
         this.config = config;
@@ -150,6 +153,13 @@ public final class GrowthEngine {
     public void loadPlayer(PlatformPlayer player, Runnable onLoaded) {
         platform.scheduler().runAsync(() -> {
             UUID uuid = player.uuid();
+            // First - the player row must exist before playTimeTracker.recordJoin below
+            // (an INSERT ... SELECT id FROM player WHERE uuid=? on a fresh player) would
+            // otherwise silently insert nothing. Also keeps the in-memory cache backing
+            // resolveUuidByUsername warm for anyone who's joined since the last restart.
+            storage.upsertUsername(uuid, player.name());
+            usernames.put(uuid, player.name());
+
             boolean freshLoad = profiles.get(uuid) == null;
             PlayerProfile profile = profiles.getOrCreate(uuid, genderRegistry.getDefault());
 
@@ -491,6 +501,19 @@ public final class GrowthEngine {
      * this without caching. Fine for occasional lookups; not meant for a
      * hot path iterating many offline players at once.</p>
      */
+    /**
+     * Resolves a typed username to a uuid for an offline-lookup command (see
+     * {@code GrowthCommand}) - checks {@link #usernames}'s in-memory hint
+     * first (anyone who's joined since this server last restarted), else
+     * falls back to a blocking {@link Storage#findUuidByUsername} lookup,
+     * same blocking contract as {@link #loadOffline}. {@code null} if this
+     * server has never seen that username.
+     */
+    public UUID resolveUuidByUsername(String username) {
+        UUID cached = usernames.findUuid(username);
+        return cached != null ? cached : storage.findUuidByUsername(username);
+    }
+
     public OfflineProfile loadOffline(UUID uuid) {
         Gender gender = genderRegistry.resolve(storage.getGenderKey(uuid));
         Double customScale = storage.getCustomScale(uuid);

@@ -18,7 +18,7 @@ command:
   invalid-syntax: |-
     <secondary>|</secondary>
     <secondary>|</secondary> <secondary>Использование →</secondary>
-    <secondary>|</secondary> <primary><syntax></primary>
+    <secondary>|</secondary> <primary><usage></primary>
     <secondary>|</secondary>
 
 height:
@@ -43,6 +43,7 @@ growth-info:
   gender: '<secondary>Пол: <primary><gender>'
   max-reached: '<primary>Рост завершён.</primary>'
   remaining: '<secondary>Осталось времени: <primary><time>'
+  unknown-player: '<red>Игрок с именем "<secondary><player></secondary><red>" никогда не заходил на этот сервер.'
 
 admin:
   reloaded: '<primary>Конфигурация <secondary>FlectoneGrowth</secondary><primary> успешно перезагружена! (<secondary><time></secondary><primary>).'
