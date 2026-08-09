@@ -302,16 +302,23 @@ public final class H2Storage implements Storage {
         }
     }
 
+    /**
+     * The {@code AND last_seen <= ?} guard closes a race against a fast quit-then-rejoin - see {@code
+     * AbstractSqlStorage}'s twin for the full interleaving this prevents (an independently-dispatched
+     * rejoin's {@code recordJoin} landing before this checkpoint's own write, which would otherwise clobber
+     * {@code last_seen} back down to the stale quit-time value).
+     */
     @Override
     public boolean checkpointPlayTime(UUID uuid, String server, long totalSeconds, long nowEpochSeconds) {
         return SqlOps.update(dataSource,
                 "UPDATE " + tables.playtime() + " SET last_seen = ?, total_seconds = ? " +
-                        "WHERE player_id = (SELECT id FROM " + tables.player() + " WHERE uuid = ?) AND server = ?",
+                        "WHERE player_id = (SELECT id FROM " + tables.player() + " WHERE uuid = ?) AND server = ? AND last_seen <= ?",
                 stmt -> {
                     stmt.setLong(1, nowEpochSeconds);
                     stmt.setLong(2, totalSeconds);
                     stmt.setString(3, uuid.toString());
                     stmt.setString(4, server);
+                    stmt.setLong(5, nowEpochSeconds);
                 },
                 logger, "H2", "checkpointPlayTime");
     }

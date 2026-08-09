@@ -291,16 +291,27 @@ public abstract class AbstractSqlStorage implements Storage {
         }
     }
 
+    /**
+     * The {@code AND last_seen <= ?} guard closes a race against a fast quit-then-rejoin: {@link
+     * #recordJoin}/this method both dispatch their DB write via independent async tasks with no ordering
+     * guarantee between them. If a rejoin's {@code recordJoin} (which bumps {@code last_seen} to the rejoin's
+     * own, later timestamp) lands before this checkpoint's own write (captured at the earlier quit moment),
+     * an unconditional {@code UPDATE} would clobber {@code last_seen} back down to the stale quit-time value
+     * - this guard makes that {@code UPDATE} affect zero rows instead, since the row's current {@code
+     * last_seen} being newer than {@code nowEpochSeconds} is exactly the signal that a later event already
+     * superseded this checkpoint.
+     */
     @Override
     public boolean checkpointPlayTime(UUID uuid, String server, long totalSeconds, long nowEpochSeconds) {
         return SqlOps.update(dataSource,
                 "UPDATE " + tables.playtime() + " SET last_seen = ?, total_seconds = ? " +
-                        "WHERE player_id = (SELECT id FROM " + tables.player() + " WHERE uuid = ?) AND server = ?",
+                        "WHERE player_id = (SELECT id FROM " + tables.player() + " WHERE uuid = ?) AND server = ? AND last_seen <= ?",
                 stmt -> {
                     stmt.setLong(1, nowEpochSeconds);
                     stmt.setLong(2, totalSeconds);
                     stmt.setString(3, uuid.toString());
                     stmt.setString(4, server);
+                    stmt.setLong(5, nowEpochSeconds);
                 },
                 logger, storageName(), "checkpointPlayTime");
     }
