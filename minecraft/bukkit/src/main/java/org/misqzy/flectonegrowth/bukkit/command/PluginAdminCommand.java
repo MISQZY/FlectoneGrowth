@@ -22,7 +22,9 @@ public final class PluginAdminCommand {
     @Permission("flectonegrowth.admin.reload")
     public void reload(CommandSender sender) {
         String locale = FlectoneGrowthMessages.resolveLocale(plugin.core(), sender);
-        plugin.reload(time -> FlectoneGrowthMessages.send(plugin.core(), sender, "admin.reloaded",
-                Map.of("time", TimeFormatter.formatMillis(time, plugin.core().messages(), locale))));
+        plugin.reload(
+                time -> FlectoneGrowthMessages.send(plugin.core(), sender, "admin.reloaded",
+                        Map.of("time", TimeFormatter.formatMillis(time, plugin.core().messages(), locale))),
+                () -> FlectoneGrowthMessages.send(plugin.core(), sender, "command.error"));
     }
 }

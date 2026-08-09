@@ -105,21 +105,34 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
      * that triggers this shouldn't freeze the whole server while a database
      * reconnect is in flight. Only the last step (restarting the ticker and
      * refreshing already-online players) touches Bukkit's Player/scheduler
-     * API and hops back to the main thread for that. {@code onComplete} runs
+     * API and hops back to the main thread for that. {@code onSuccess} runs
      * on the main thread once everything has settled, receiving the total
-     * wall-clock time (in milliseconds) the whole reload took.</p>
+     * wall-clock time (in milliseconds) the whole reload took.
+     *
+     * <p>{@code onFailure} exists because the async body above can throw - a malformed hand-edited YAML
+     * file (a syntax error) or a bad DB config surfaces as a {@link RuntimeException} from {@link
+     * #loadConfig}/{@code core.reload}. Uncaught, that used to just kill the async task: Bukkit's own
+     * async-task wrapper logs a warning to console, but the command sender who triggered this got no
+     * success message, no error message, nothing - core state stays safely on the old config, but there
+     * was no user-facing signal of that either.</p>
      */
-    public void reload(LongConsumer onComplete) {
+    public void reload(LongConsumer onSuccess, Runnable onFailure) {
         long startedAt = System.currentTimeMillis();
         scheduler.runAsync(() -> {
-            new ResourceInstaller(this).installDefaults();
-            new ConfigMigrator(this).migrateIfNeeded();
+            try {
+                new ResourceInstaller(this).installDefaults();
+                new ConfigMigrator(this).migrateIfNeeded();
 
-            ConfigView mainConfig = loadConfig("config.yml");
-            ConfigView integrationsConfig = loadConfig("integrations.yml");
-            FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
-            core.reload(new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
-                    () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
+                ConfigView mainConfig = loadConfig("config.yml");
+                ConfigView integrationsConfig = loadConfig("integrations.yml");
+                FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
+                core.reload(new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
+                        () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
+            } catch (RuntimeException e) {
+                getLogger().severe("Reload failed, keeping the previous configuration: " + e.getMessage());
+                if (onFailure != null) scheduler.runSync(onFailure);
+                return;
+            }
 
             scheduler.runSync(() -> {
                 if (ticker != null) ticker.restart();
@@ -129,7 +142,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
                         .toList();
                 core.growthEngine().refreshAfterReload(online);
 
-                if (onComplete != null) onComplete.accept(System.currentTimeMillis() - startedAt);
+                if (onSuccess != null) onSuccess.accept(System.currentTimeMillis() - startedAt);
             });
         });
     }

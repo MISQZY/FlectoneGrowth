@@ -3,6 +3,7 @@ package org.misqzy.flectonegrowth.bukkit.config;
 import org.misqzy.flectonegrowth.common.config.ConfigView;
 import org.misqzy.flectonegrowth.common.config.YamlConfigView;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.error.YAMLException;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -26,6 +27,13 @@ public final class YamlFileLoader {
             return new YamlConfigView(loaded instanceof Map<?, ?> map ? map : Map.of());
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load YAML file: " + file, e);
+        } catch (YAMLException e) {
+            // A syntax error (bad indentation, an unclosed quote, ...) throws YAMLException - an unchecked
+            // RuntimeException, not an IOException - straight out of Yaml#load. Uncaught, this surfaced as a
+            // raw stack trace crashing plugin enable, or (via /flectonegrowth reload, whose whole body runs
+            // on an async task) an async task that just dies mid-reload with no user-facing feedback at all -
+            // wrapped here into the same crafted, admin-legible message every other load failure already gets.
+            throw new IllegalStateException("Failed to parse YAML file (syntax error): " + file + " - " + e.getMessage(), e);
         }
     }
 }

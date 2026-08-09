@@ -7,6 +7,7 @@ import org.misqzy.flectonegrowth.common.config.migration.YamlNodeOps;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.error.YAMLException;
 import org.yaml.snakeyaml.nodes.MappingNode;
 import org.yaml.snakeyaml.nodes.Node;
 
@@ -145,22 +146,31 @@ public final class ConfigMigrator {
         return write(target, disk);
     }
 
-    /** Composes the bundled jar copy of {@code resourceName}, or {@code null} if it isn't actually bundled (or fails to read, logged as a warning - that shouldn't happen for a resource actually packaged in this jar). */
+    /** Composes the bundled jar copy of {@code resourceName}, or {@code null} if it isn't actually bundled (or fails to read/parse, logged as a warning - that shouldn't happen for a resource actually packaged in this jar). */
     private MappingNode readBundled(String resourceName) {
         try (InputStream in = plugin.getResource(resourceName)) {
             if (in == null) return null;
             return asMapping(composer.compose(new InputStreamReader(in, StandardCharsets.UTF_8)));
-        } catch (IOException e) {
+        } catch (IOException | YAMLException e) {
             plugin.getLogger().warning("Failed to read bundled " + resourceName + " for migration: " + e.getMessage());
             return null;
         }
     }
 
-    /** Composes the on-disk copy of {@code file}, or {@code null} if it's empty/not a mapping/unreadable (the latter logged as a warning, so a genuine I/O failure isn't indistinguishable from "nothing to migrate"). */
+    /**
+     * Composes the on-disk copy of {@code file}, or {@code null} if it's empty/not a mapping/unreadable/
+     * unparseable (the latter two logged as a warning, so a genuine failure isn't indistinguishable from
+     * "nothing to migrate"). A {@link YAMLException} (a syntax error - bad indentation, an unclosed quote)
+     * is caught alongside {@link IOException} here for the same reason {@link #asMapping} already treats a
+     * non-mapping composed value as {@code null}: an admin's malformed hand-edit degrades to "leave it alone,
+     * this file isn't safely migratable right now" (see this method's callers), not an uncaught exception
+     * that used to crash plugin enable outright, or (via {@code /flectonegrowth reload}, whose whole body runs
+     * on an async task) silently kill that task before it ever reports back to the sender who ran it.
+     */
     private MappingNode readDisk(File file) {
         try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(file.toPath()), StandardCharsets.UTF_8)) {
             return asMapping(composer.compose(reader));
-        } catch (IOException e) {
+        } catch (IOException | YAMLException e) {
             plugin.getLogger().warning("Failed to read " + file.getName() + " for migration: " + e.getMessage());
             return null;
         }
