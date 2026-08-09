@@ -314,7 +314,10 @@ public final class GrowthEngine {
         Double custom = profile.customScale();
 
         if (custom != null) {
-            player.applyScale(Math.min(custom, maxScaleFor(player)));
+            // Both bounds, not just the upper one - a custom scale that ended up below minScale() (a
+            // corrupted/out-of-range value from an older write path, or a cross-server sync message from a
+            // server with a lower scale.max than this one) must not reach Attribute.SCALE unclamped either.
+            player.applyScale(Math.max(minScale(), Math.min(custom, maxScaleFor(player))));
             return;
         }
 
@@ -593,7 +596,13 @@ public final class GrowthEngine {
             if (profile == null) return; // player not online on this server, nothing to refresh
 
             switch (message.type()) {
-                case SCALE_SET -> profile.setCustomScale(message.doubleValue());
+                // Clamped, not applied raw: unlike the local /height path (setCustomScale), which always
+                // runs a value through ScaleMath.clampToRange before it reaches storage or the entity, this
+                // value already crossed the network - a legitimate cause is a sibling server with a
+                // different scale.max than this one's own (not a corrupt/malicious value, just a different
+                // config), which a strict clampToRange rejection would drop instead of reconciling.
+                case SCALE_SET -> profile.setCustomScale(
+                        Math.max(minScale(), Math.min(message.doubleValue(), maxScaleFor(profile.gender()))));
                 case SCALE_REMOVED -> profile.setCustomScale(null);
                 case GENDER_SET -> profile.setGender(genderRegistry.resolve(message.stringValue()));
             }
