@@ -10,7 +10,7 @@ import org.bukkit.Bukkit;
  * {@link FlectonePulseServerIdResolver} and {@link FlectonePulseColorResolver}.
  *
  * <p>{@code net.flectone.pulse:core} is published to Maven Central
- * (verified: {@code repo1.maven.org} resolves {@code core-1.12.0.jar}
+ * (verified: {@code repo1.maven.org} resolves {@code core-1.12.2.jar}
  * directly) and, since some version, exposes a real static entry point:
  * {@code FlectonePulseAPI.getInstance()} returns the live {@code FlectonePulse}
  * instance, whose {@code <T> T get(Class<T>)} is a Guice service-locator
