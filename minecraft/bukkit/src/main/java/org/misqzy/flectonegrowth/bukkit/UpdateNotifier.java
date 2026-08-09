@@ -2,6 +2,7 @@ package org.misqzy.flectonegrowth.bukkit;
 
 import org.bukkit.entity.Player;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
+import org.misqzy.flectonegrowth.common.lang.Messages;
 import org.misqzy.flectonegrowth.common.notify.Notifier;
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.update.UpdateChecker;
@@ -66,7 +67,8 @@ public final class UpdateNotifier extends Notifier {
         notify(new BukkitPlayerAdapter(player), "admin.update-available", Map.of(
                 "latest", latest,
                 "current", BuildVersion.VERSION,
-                "url", releaseUrl()));
+                // Inside <click:open_url:'<url>'> - a nested tag argument, needs TemplateText (see its javadoc).
+                "url", new Messages.TemplateText(releaseUrl())));
     }
 
     /**

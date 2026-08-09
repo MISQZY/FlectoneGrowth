@@ -38,7 +38,8 @@ gender:
     female: 'Female'
 
 growth-info:
-  header: '<primary>--- <secondary><player></secondary><primary>''s growth ---'
+  header: |-
+    <hover:show_text:'<secondary>Click to view your own growth summary'><click:run_command:'/growth summary'><primary>--- <secondary><player></secondary><primary>'s growth ---</click></hover>
   height: '<secondary>Height: <primary><value> <unit></primary><secondary> (<gender>)'
   gender: '<secondary>Gender: <primary><gender>'
   max-reached: '<primary>Fully grown.</primary>'
@@ -46,8 +47,10 @@ growth-info:
   unknown-player: '<red>No player named "<secondary><player></secondary><red>" has ever been seen on this server.'
 
 admin:
-  reloaded: '<primary><secondary>FlectoneGrowth</secondary><primary> configuration successfully reloaded! (<secondary><time></secondary><primary>).'
-  update-available: '<primary>A new <secondary>FlectoneGrowth</secondary><primary> version is available: <secondary><latest></secondary><primary> (you have <secondary><current></secondary><primary>). Download: <secondary><url></secondary>'
+  reloaded: |-
+    <hover:show_text:'<secondary>Click to reload again'><click:run_command:'/flectonegrowth reload'><primary><secondary>FlectoneGrowth</secondary><primary> configuration successfully reloaded! (<secondary><time></secondary><primary>).</click></hover>
+  update-available: |-
+    <primary>A new <secondary>FlectoneGrowth</secondary><primary> version is available: <secondary><latest></secondary><primary> (you have <secondary><current></secondary><primary>). <hover:show_text:'<secondary>Click to open the tags page'><click:open_url:'<url>'><secondary><u>Download</u></secondary></click></hover>
   migrate-playtime-started: '<primary>Migrating playtime for <secondary><count></secondary><primary> known player(s)... this may take a moment.'
   migrate-playtime-done: '<primary>Playtime migration complete: <secondary><migrated></secondary><primary> migrated, <secondary><skipped></secondary><primary> skipped.'
   migrate-playtime-sync-disabled: '<red>Note: network.sync-enabled is off, so migrated playtime has no effect on growth yet - growth reads the live statistic directly on a single, unsynced server. Enable network.sync-enabled first if you want it to take effect.</red>'

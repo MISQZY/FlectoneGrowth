@@ -38,7 +38,8 @@ gender:
     female: 'Женский'
 
 growth-info:
-  header: '<primary>--- Рост игрока <secondary><player></secondary><primary> ---'
+  header: |-
+    <hover:show_text:'<secondary>Нажмите, чтобы посмотреть свою сводку роста'><click:run_command:'/growth summary'><primary>--- Рост игрока <secondary><player></secondary><primary> ---</click></hover>
   height: '<secondary>Рост: <primary><value> <unit></primary><secondary> (<gender>)'
   gender: '<secondary>Пол: <primary><gender>'
   max-reached: '<primary>Рост завершён.</primary>'
@@ -46,8 +47,10 @@ growth-info:
   unknown-player: '<red>Игрок с именем "<secondary><player></secondary><red>" никогда не заходил на этот сервер.'
 
 admin:
-  reloaded: '<primary>Конфигурация <secondary>FlectoneGrowth</secondary><primary> успешно перезагружена! (<secondary><time></secondary><primary>).'
-  update-available: '<primary>Доступна новая версия <secondary>FlectoneGrowth</secondary><primary>: <secondary><latest></secondary><primary> (у вас <secondary><current></secondary><primary>). Скачать: <secondary><url></secondary>'
+  reloaded: |-
+    <hover:show_text:'<secondary>Нажмите, чтобы перезагрузить снова'><click:run_command:'/flectonegrowth reload'><primary>Конфигурация <secondary>FlectoneGrowth</secondary><primary> успешно перезагружена! (<secondary><time></secondary><primary>).</click></hover>
+  update-available: |-
+    <primary>Доступна новая версия <secondary>FlectoneGrowth</secondary><primary>: <secondary><latest></secondary><primary> (у вас <secondary><current></secondary><primary>). <hover:show_text:'<secondary>Нажмите, чтобы открыть страницу тегов'><click:open_url:'<url>'><secondary><u>Скачать</u></secondary></click></hover>
   migrate-playtime-started: '<primary>Миграция игрового времени для <secondary><count></secondary><primary> известных игроков... это может занять некоторое время.'
   migrate-playtime-done: '<primary>Миграция игрового времени завершена: <secondary><migrated></secondary><primary> перенесено, <secondary><skipped></secondary><primary> пропущено.'
   migrate-playtime-sync-disabled: '<red>Внимание: network.sync-enabled отключён, поэтому перенесённое время пока не влияет на рост - на одиночном несинхронизированном сервере рост считается напрямую по статистике игры. Включите network.sync-enabled, чтобы миграция вступила в силу.</red>'
