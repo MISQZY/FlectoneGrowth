@@ -76,9 +76,9 @@ public final class ServerIdProvisioner {
             if (!replaced) updated.add(0, "server: '" + serverId + "'");
 
             Files.write(configFile.toPath(), updated, StandardCharsets.UTF_8);
-            plugin.getLogger().info("Saved server = \"" + serverId + "\" to config.yml.");
+            plugin.getLogger().info("Saved server id \"" + serverId + "\" to config.yml");
         } catch (IOException e) {
-            plugin.getLogger().severe("Failed to persist server to config.yml: " + e.getMessage());
+            org.misqzy.flectonegrowth.common.log.PluginLog.error(plugin.getLogger(), "Saving server id to config.yml", e);
         }
     }
 }

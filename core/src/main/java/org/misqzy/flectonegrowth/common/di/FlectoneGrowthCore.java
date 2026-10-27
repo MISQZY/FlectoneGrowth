@@ -98,15 +98,15 @@ public final class FlectoneGrowthCore {
         Storage primary = StorageFactory.create(logger, dataFolder, config);
         if (primary.initialize()) {
             if (!primary.testConnection()) {
-                logger.warning("Storage connection test failed - some features may not work.");
+                logger.fine("Storage connection test failed after initialisation.");
             }
             return primary;
         }
 
-        logger.severe("Primary storage (" + config.storageType() + ") failed to initialise. Falling back to YAML.");
+        logger.severe(config.storageType() + " storage is unavailable, falling back to YAML (see the error above).");
         Storage fallback = StorageFactory.createFallback(logger, dataFolder);
         if (fallback.initialize()) {
-            logger.warning("Using YAML storage as a fallback.");
+            logger.fine("Using YAML storage as a fallback.");
             return fallback;
         }
 
@@ -152,8 +152,7 @@ public final class FlectoneGrowthCore {
             // instead so the gap is at least visible.
             if (config.networkSyncEnabled() != newConfig.networkSyncEnabled()) {
                 platform.logger().warning("network.sync-enabled changed (" + config.networkSyncEnabled() + " -> "
-                        + newConfig.networkSyncEnabled() + ") but this requires a full restart to take effect - "
-                        + "the cross-server sync channel is only ever set up once, at plugin enable.");
+                        + newConfig.networkSyncEnabled() + "); restart the server for it to take effect.");
             }
 
             this.config = newConfig;

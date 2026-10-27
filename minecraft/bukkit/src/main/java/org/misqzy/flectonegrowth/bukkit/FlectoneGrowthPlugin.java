@@ -47,6 +47,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
     private BukkitNetworkMessenger networkMessenger;
     private PlaceholderAPIHook placeholderHook;
     private UpdateNotifier updateNotifier;
+    private String serverId;
 
     /**
      * The {@code integrations.yml} view currently in effect - read by
@@ -81,6 +82,9 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
 
         ticker = new GrowthTicker(scheduler, core.growthEngine());
         ticker.start();
+
+        getLogger().info("Enabled v" + BuildVersion.VERSION + " (storage: " + core.storage().type()
+                + ", server: " + serverId + ")");
     }
 
     @Override
@@ -140,7 +144,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
                 core.reload(new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
                         () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
             } catch (RuntimeException e) {
-                getLogger().severe("Reload failed, keeping the previous configuration: " + e.getMessage());
+                getLogger().severe("Reload failed, keeping the previous configuration: " + org.misqzy.flectonegrowth.common.log.PluginLog.describe(e));
                 if (onFailure != null) scheduler.runSync(onFailure);
                 return;
             }
@@ -166,6 +170,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
         scheduler = new BukkitScheduler(this);
         NetworkMessenger messenger = createNetworkMessenger(mainConfig);
         String serverId = resolveServerId(mainConfig, integrationsConfig);
+        this.serverId = serverId;
 
         BukkitPlatform platform = new BukkitPlatform(this, scheduler, serverId);
         BukkitModule bukkitModule = new BukkitModule(scheduler, messenger, this::findOnline);

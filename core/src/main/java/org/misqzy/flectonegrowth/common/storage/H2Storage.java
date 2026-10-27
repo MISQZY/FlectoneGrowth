@@ -14,7 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.logging.Level;
+import org.misqzy.flectonegrowth.common.log.PluginLog;
 import java.util.logging.Logger;
 
 /**
@@ -77,7 +77,7 @@ public final class H2Storage implements Storage {
             migrateSchemaIfNeeded();
             return testConnection();
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Failed to initialise H2 database: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 initialisation", e);
             return false;
         }
     }
@@ -88,7 +88,7 @@ public final class H2Storage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             return conn.isValid(5);
         } catch (SQLException e) {
-            logger.log(Level.WARNING, "H2 connection test failed: " + e.getMessage(), e);
+            PluginLog.warn(logger, "H2 connection test", e);
             return false;
         }
     }
@@ -198,7 +198,7 @@ public final class H2Storage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "H2 setCustomScale: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 setCustomScale", e);
             return false;
         }
     }
@@ -235,7 +235,7 @@ public final class H2Storage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "H2 setGenderKey: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 setGenderKey", e);
             return false;
         }
     }
@@ -263,7 +263,7 @@ public final class H2Storage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "H2 setGrowthTimeSeconds: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 setGrowthTimeSeconds", e);
             return false;
         }
     }
@@ -305,7 +305,7 @@ public final class H2Storage implements Storage {
             mergePlayTime(conn, uuid, server, firstSeen, nowEpochSeconds, totalSeconds, sessions);
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "H2 recordJoin: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 recordJoin", e);
             return false;
         }
     }
@@ -345,7 +345,7 @@ public final class H2Storage implements Storage {
             mergePlayTime(conn, uuid, server, firstSeen, nowEpochSeconds, totalSeconds, sessions);
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "H2 addPlayTime: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 addPlayTime", e);
             return false;
         }
     }
@@ -397,7 +397,7 @@ public final class H2Storage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, "H2 upsertUsername: " + e.getMessage(), e);
+            PluginLog.error(logger, "H2 upsertUsername", e);
             return false;
         }
     }

@@ -60,7 +60,7 @@ public final class LegacyTableMigration {
                 try (Statement stmt = conn.createStatement()) {
                     stmt.executeUpdate("ALTER TABLE " + oldName + " RENAME TO " + newName);
                 }
-                logger.info(storageName + " renamed legacy table " + oldName + " to " + newName + ".");
+                logger.info(storageName + ": renamed table " + oldName + " to " + newName);
                 break; // only one old-prefixed copy of a given table can exist at a time
             }
         }

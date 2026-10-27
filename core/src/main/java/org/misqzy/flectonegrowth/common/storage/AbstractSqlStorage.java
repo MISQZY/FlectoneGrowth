@@ -12,7 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.logging.Level;
+import org.misqzy.flectonegrowth.common.log.PluginLog;
 import java.util.logging.Logger;
 
 /**
@@ -66,7 +66,7 @@ public abstract class AbstractSqlStorage implements Storage {
             migrateSchemaIfNeeded();
             return testConnection();
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Failed to initialise " + storageName() + ": " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " initialisation", e);
             return false;
         }
     }
@@ -77,7 +77,7 @@ public abstract class AbstractSqlStorage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             return conn.isValid(5);
         } catch (SQLException e) {
-            logger.log(Level.WARNING, storageName() + " connection test failed: " + e.getMessage(), e);
+            PluginLog.warn(logger, storageName() + " connection test", e);
             return false;
         }
     }
@@ -189,7 +189,7 @@ public abstract class AbstractSqlStorage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName() + " setCustomScale: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " setCustomScale", e);
             return false;
         }
     }
@@ -227,7 +227,7 @@ public abstract class AbstractSqlStorage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName() + " setGenderKey: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " setGenderKey", e);
             return false;
         }
     }
@@ -256,7 +256,7 @@ public abstract class AbstractSqlStorage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName() + " setGrowthTimeSeconds: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " setGrowthTimeSeconds", e);
             return false;
         }
     }
@@ -292,7 +292,7 @@ public abstract class AbstractSqlStorage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName() + " recordJoin: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " recordJoin", e);
             return false;
         }
     }
@@ -339,7 +339,7 @@ public abstract class AbstractSqlStorage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName() + " addPlayTime: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " addPlayTime", e);
             return false;
         }
     }
@@ -375,7 +375,7 @@ public abstract class AbstractSqlStorage implements Storage {
             }
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName() + " upsertUsername: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName() + " upsertUsername", e);
             return false;
         }
     }

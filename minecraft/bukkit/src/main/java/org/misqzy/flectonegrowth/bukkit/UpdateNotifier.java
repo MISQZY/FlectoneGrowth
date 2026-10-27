@@ -55,8 +55,7 @@ public final class UpdateNotifier extends Notifier {
                 UpdateChecker.latestVersionIfNewer(REPO_OWNER, REPO_NAME, BuildVersion.VERSION, logger)
                         .ifPresent(latest -> {
                             availableVersion = latest;
-                            logger.warning("A new FlectoneGrowth version is available: v" + latest
-                                    + " (running v" + BuildVersion.VERSION + "). Get it from " + releaseUrl());
+                            logger.warning("Update available: v" + latest + " (running v" + BuildVersion.VERSION + "), download: " + releaseUrl());
                         }));
     }
 

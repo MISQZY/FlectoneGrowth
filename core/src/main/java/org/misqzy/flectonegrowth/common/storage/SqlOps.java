@@ -9,7 +9,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.logging.Level;
+import org.misqzy.flectonegrowth.common.log.PluginLog;
 import java.util.logging.Logger;
 
 /**
@@ -47,7 +47,7 @@ final class SqlOps {
                 return rs.next() ? mapper.map(rs) : notFound;
             }
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName + " " + op + ": " + e.getMessage(), e);
+            PluginLog.error(logger, storageName + " " + op, e);
             return notFound;
         }
     }
@@ -61,7 +61,7 @@ final class SqlOps {
             stmt.executeUpdate();
             return true;
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName + " " + op + ": " + e.getMessage(), e);
+            PluginLog.error(logger, storageName + " " + op, e);
             return false;
         }
     }
@@ -100,7 +100,7 @@ final class SqlOps {
                 return new StoredPlayerData(customScale, genderKey, growthSeconds, playTime);
             }
         } catch (SQLException e) {
-            logger.log(Level.SEVERE, storageName + " loadStoredData: " + e.getMessage(), e);
+            PluginLog.error(logger, storageName + " loadStoredData", e);
             return null;
         }
     }

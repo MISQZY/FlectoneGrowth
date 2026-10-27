@@ -75,6 +75,9 @@ public final class ConfigMigrator {
     /** No {@code version} on disk at all (an install from before this field existed) - always stale. */
     private static final String UNKNOWN_VERSION = "0.0.0";
 
+    /** Folder (inside the plugin's data folder) every pre-migration backup goes into, so they never clutter the plugin root or {@code localizations/}. */
+    private static final String BACKUP_FOLDER = "backups";
+
     /** Backup suffix timestamp, e.g. {@code 2026-07-29_14-05-32} - appended as {@code <name>.yml.backup_<timestamp>}. Second-granularity so two migrations run in the same minute (e.g. config.yml and integrations.yml back-to-back) never collide. */
     private static final DateTimeFormatter BACKUP_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
@@ -96,6 +99,7 @@ public final class ConfigMigrator {
     }
 
     public void migrateIfNeeded() {
+        relocateLegacyBackups();
         File configFile = new File(plugin.getDataFolder(), "config.yml");
         if (!configFile.exists()) return;
 
@@ -111,9 +115,7 @@ public final class ConfigMigrator {
         allMigrated &= migrateOne(INTEGRATIONS_RESOURCE, onDiskVersion, bundledVersion, true);
 
         if (allMigrated) {
-            plugin.getLogger().warning("Migrated FlectoneGrowth's config files from version " + onDiskVersion
-                    + " to " + bundledVersion + ". Every file was backed up (<name>.yml.backup_<date_hh_mm_ss>) first,"
-                    + " with custom values (and comments) carried over automatically.");
+            plugin.getLogger().info("Configs migrated " + onDiskVersion + " -> " + bundledVersion + " (backups in " + BACKUP_FOLDER + "/).");
         } else {
             plugin.getLogger().severe("FlectoneGrowth's config migration from version " + onDiskVersion + " to "
                     + bundledVersion + " only partially completed - see the errors above. It will be retried on next startup.");
@@ -185,16 +187,55 @@ public final class ConfigMigrator {
         return version != null ? version : UNKNOWN_VERSION;
     }
 
-    /** @return {@code true} if {@code target} was successfully copied to its backup path. */
+    /** @return {@code true} if {@code target} was successfully copied to its backup path under {@link #BACKUP_FOLDER}. */
     private boolean backup(File target) {
-        File backup = new File(target.getParentFile(), target.getName() + ".backup_" + LocalDateTime.now().format(BACKUP_TIMESTAMP));
+        File folder = backupFolder();
+        File backup = new File(folder, target.getName() + ".backup_" + LocalDateTime.now().format(BACKUP_TIMESTAMP));
         try {
+            Files.createDirectories(folder.toPath());
             Files.copy(target.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
             return true;
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to back up " + target.getName() + " before migration: " + e.getMessage());
             return false;
         }
+    }
+
+    private File backupFolder() {
+        return new File(plugin.getDataFolder(), BACKUP_FOLDER);
+    }
+
+    /**
+     * One-time tidy-up of {@code *.backup_<timestamp>} files that earlier versions left next to the
+     * config files (plugin root and {@code localizations/}): moves them into {@link #BACKUP_FOLDER}.
+     * Never overwrites an existing file there and never fails startup.
+     */
+    public void relocateLegacyBackups() {
+        File dataFolder = plugin.getDataFolder();
+        int moved = 0;
+        for (File dir : new File[]{dataFolder, new File(dataFolder, "localizations")}) {
+            File[] stray = dir.listFiles((d, name) -> name.contains(".backup_"));
+            if (stray == null) continue;
+            for (File file : stray) {
+                if (!file.isFile()) continue;
+                try {
+                    Files.createDirectories(backupFolder().toPath());
+                    Files.move(file.toPath(), uniqueBackupTarget(file.getName()).toPath());
+                    moved++;
+                } catch (IOException e) {
+                    plugin.getLogger().warning("Could not move old backup " + file.getName() + " to " + BACKUP_FOLDER + "/: " + e.getMessage());
+                }
+            }
+        }
+        if (moved > 0) plugin.getLogger().info("Moved " + moved + " old config backup(s) into " + BACKUP_FOLDER + "/.");
+    }
+
+    private File uniqueBackupTarget(String name) {
+        File target = new File(backupFolder(), name);
+        for (int i = 1; target.exists(); i++) {
+            target = new File(backupFolder(), name + "_" + i);
+        }
+        return target;
     }
 
     /**

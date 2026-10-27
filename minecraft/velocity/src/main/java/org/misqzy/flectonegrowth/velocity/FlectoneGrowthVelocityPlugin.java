@@ -38,7 +38,7 @@ public final class FlectoneGrowthVelocityPlugin {
     @Subscribe
     public void onProxyInitialize(ProxyInitializeEvent event) {
         server.getChannelRegistrar().register(CHANNEL);
-        logger.info("Registered {} plugin messaging channel for cross-server growth sync relay.", CHANNEL.getId());
+        logger.info("Enabled v{} (sync channel: {})", BuildVersion.VERSION, CHANNEL.getId());
     }
 
     @Subscribe

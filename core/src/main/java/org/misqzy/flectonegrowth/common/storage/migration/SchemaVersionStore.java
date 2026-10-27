@@ -51,7 +51,7 @@ public final class SchemaVersionStore {
             SchemaMigrationRunner.run(conn, step.statements(dialect, tables));
         }
         writeVersion(conn, upsertSql, pluginVersion);
-        logger.info(storageName + " schema migrated from version " + current + " to " + pluginVersion + ".");
+        logger.info(storageName + ": schema migrated " + current + " -> " + pluginVersion);
     }
 
     private static String readOrInitVersion(Connection conn, String schemaVersionTable, String upsertSql, String pluginVersion) throws SQLException {

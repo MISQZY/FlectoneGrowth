@@ -42,13 +42,10 @@ public final class LegacyDataFolderMigrator {
 
         Logger logger = plugin.getLogger();
         if (legacyFolder.renameTo(dataFolder)) {
-            logger.info("Migrated data folder from '" + LEGACY_FOLDER_NAME
-                    + "' to '" + dataFolder.getName() + "' (PlayerGrowth -> FlectoneGrowth rename) - "
-                    + "existing config and player data carried over.");
+            logger.info("Renamed data folder '" + LEGACY_FOLDER_NAME + "' to '" + dataFolder.getName() + "'");
         } else {
-            logger.warning("Found a legacy '" + LEGACY_FOLDER_NAME + "' data folder next to '"
-                    + dataFolder.getName() + "' but could not rename it automatically. "
-                    + "Move/rename it to '" + dataFolder.getName() + "' by hand, or the plugin will start fresh.");
+            logger.warning("Could not rename legacy data folder '" + LEGACY_FOLDER_NAME + "'; rename it to '"
+                    + dataFolder.getName() + "' manually or the plugin starts with empty data");
         }
     }
 }

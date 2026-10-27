@@ -107,9 +107,9 @@ public final class FlectonePulseLifecycleListener implements Listener {
             }
         } catch (RuntimeException | LinkageError e) {
             // Hard failure, not "not ready yet": stay claimed so it isn't retried, until FlectonePulse restarts.
-            plugin.getLogger().warning("[FlectonePulse] Could not register the lifecycle listener; the health "
-                    + "report won't refresh on FlectonePulse reloads (integrations themselves are unaffected). "
-                    + "Detail: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            plugin.getLogger().warning("Could not hook into FlectonePulse reload events ("
+                    + org.misqzy.flectonegrowth.common.log.PluginLog.describe(e)
+                    + "); the integration status won't refresh after its reloads.");
             return true;
         }
 
@@ -126,8 +126,8 @@ public final class FlectonePulseLifecycleListener implements Listener {
                 cancelPolling();
             } else if (++polls >= MAX_POLLS) {
                 cancelPolling();
-                plugin.getLogger().warning("[FlectonePulse] FlectonePulse never became ready within " + MAX_POLLS
-                        + "s; its reload events won't refresh the health report until it is re-enabled.");
+                plugin.getLogger().warning("FlectonePulse did not become ready within " + MAX_POLLS
+                        + "s; its reloads won't refresh the integration status.");
             }
         }, POLL_PERIOD_TICKS, POLL_PERIOD_TICKS);
     }
@@ -149,11 +149,10 @@ public final class FlectonePulseLifecycleListener implements Listener {
         if (disabled || !plugin.isEnabled()) return;
         Logger logger = plugin.getLogger();
         if (successful) {
-            logger.info("[FlectonePulse] FlectonePulse finished reloading - re-checking integration state.");
+            logger.fine("FlectonePulse reloaded, re-checking integration status.");
         } else {
-            logger.warning("[FlectonePulse] FlectonePulse's reload failed (its previous state stays in effect): "
-                    + (failureMessage != null ? failureMessage : "unknown error")
-                    + " - re-checking integration state.");
+            logger.warning("FlectonePulse reload failed, its previous state stays in effect: "
+                    + (failureMessage != null ? failureMessage : "unknown error"));
         }
         // logSummary itself hops to the main thread if called from elsewhere.
         FlectonePulseHealthCheck.logSummary(plugin, integrationsConfig.get());

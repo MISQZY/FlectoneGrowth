@@ -60,6 +60,12 @@ dependencies {
     implementation("com.google.inject:guice:${project.findProperty("guiceVersion")}")
     implementation("org.yaml:snakeyaml:${project.findProperty("snakeyamlVersion")}")
     implementation("com.zaxxer:HikariCP:${project.findProperty("hikariVersion")}")
+    // HikariCP (and the MySQL/MariaDB drivers, if they detect it) log through slf4j-api. Without a
+    // provider slf4j prints a "No SLF4J providers were found" banner to stderr and Hikari's pool
+    // start/stop chatter would go wherever the server's slf4j points. Bundle the no-op binding (same
+    // 1.7.x line as the slf4j-api Hikari 6.x pulls in) and relocate both, so this stays fully private.
+    // Real storage failures are reported by PluginLog, not by Hikari.
+    implementation("org.slf4j:slf4j-nop:1.7.36")
     implementation("com.h2database:h2:${project.findProperty("h2Version")}")
     implementation("com.mysql:mysql-connector-j:${project.findProperty("mysqlVersion")}")
     implementation("org.mariadb.jdbc:mariadb-java-client:${project.findProperty("mariadbVersion")}")
@@ -75,6 +81,7 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     destinationDirectory.set(layout.buildDirectory.dir("intermediates/shadow"))
     relocate("com.google.inject", "org.misqzy.flectonegrowth.bukkit.libs.guice")
     relocate("com.zaxxer.hikari", "org.misqzy.flectonegrowth.bukkit.libs.hikari")
+    relocate("org.slf4j", "org.misqzy.flectonegrowth.bukkit.libs.slf4j")
     relocate("org.yaml.snakeyaml", "org.misqzy.flectonegrowth.bukkit.libs.snakeyaml")
     relocate("org.incendo.cloud", "org.misqzy.flectonegrowth.bukkit.libs.cloud")
     relocate("net.kyori", "org.misqzy.flectonegrowth.bukkit.libs.kyori")

@@ -160,7 +160,7 @@ Each installed module ships with:
 
 All four are commented in place and regenerate automatically if deleted;
 existing installs are migrated forward automatically on version upgrades
-(with a timestamped backup first) without losing customizations or
+(with a timestamped backup in `backups/` first) without losing customizations or
 comments.
 
 ## Building from source

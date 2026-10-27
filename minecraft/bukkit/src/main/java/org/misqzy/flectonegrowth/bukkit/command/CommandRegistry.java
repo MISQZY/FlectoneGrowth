@@ -21,7 +21,6 @@ import org.misqzy.flectonegrowth.common.service.ScaleMath;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 /**
@@ -128,8 +127,8 @@ public final class CommandRegistry {
         // Logging it here too means it's not solely dependent on whoever's watching the console
         // at that moment to ever notice a command is broken.
         manager.exceptionController().registerHandler(CommandExecutionException.class, ctx -> {
-            plugin.getLogger().log(Level.SEVERE,
-                    "Unhandled exception executing a FlectoneGrowth command", ctx.exception().getCause());
+            org.misqzy.flectonegrowth.common.log.PluginLog.error(plugin.getLogger(), "Command execution",
+                    ctx.exception().getCause() != null ? ctx.exception().getCause() : ctx.exception());
             FlectoneGrowthMessages.send(core, ctx.context().sender(), "command.error");
         });
 

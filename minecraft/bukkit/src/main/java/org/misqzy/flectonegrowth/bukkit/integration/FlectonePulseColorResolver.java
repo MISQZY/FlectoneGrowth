@@ -2,11 +2,10 @@ package org.misqzy.flectonegrowth.bukkit.integration;
 
 import net.flectone.pulse.config.Message;
 import net.flectone.pulse.file.FileFacade;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.misqzy.flectonegrowth.common.config.ConfigView;
+import org.misqzy.flectonegrowth.common.log.PluginLog;
 
 import java.util.Map;
-import java.util.logging.Logger;
 
 /**
  * Resolves FlectonePulse's configured {@code <fcolor:N>} default palette
@@ -35,35 +34,20 @@ public final class FlectonePulseColorResolver {
         }
     }
 
-    /**
-     * Logs a one-time, admin-visible report of what {@link #resolveDefaultColors} would see
-     * right now and, if the palette is unavailable, why. Call once per enable/reload; the
-     * per-message lookup above stays silent on purpose.
-     */
-    public static void logDiagnostics(JavaPlugin plugin, ConfigView integrations) {
-        Logger logger = plugin.getLogger();
+    /** Short status fragment for the one-line report ({@link FlectonePulseHealthCheck}); {@code problem} marks a state worth a warning. */
+    record Summary(String text, boolean problem) {}
 
-        if (!enabled(integrations)) {
-            logger.info("[FlectonePulse] fcolor integration disabled via integrations.yml - <fcolor:N> tags will be a no-op.");
-            return;
-        }
-        if (!FlectonePulseAccess.isPluginEnabled()) {
-            logger.info("[FlectonePulse] Not installed/enabled - <fcolor:N> tags will be a no-op.");
-            return;
-        }
-
+    static Summary summarize(ConfigView integrations) {
+        if (!enabled(integrations)) return new Summary("colors off", false);
         try {
             Palette.Status status = Palette.status();
-            switch (status.kind()) {
-                case UNREACHABLE -> logger.warning("[FlectonePulse] Enabled, but its API isn't reachable right now ("
-                        + FlectonePulseAccess.diagnose() + ") - <fcolor:N> tags are a no-op until it is.");
-                case DISABLED -> logger.warning("[FlectonePulse] API reachable, but its fcolor module is disabled "
-                        + "(message.yml format.fcolor.enable) - <fcolor:N> tags are a no-op until enabled there.");
-                case ACTIVE -> logger.info("[FlectonePulse] fcolor integration active - " + status.size() + " default color(s) configured.");
-            }
+            return switch (status.kind()) {
+                case UNREACHABLE -> new Summary("colors unavailable", true);
+                case DISABLED -> new Summary("colors unavailable (fcolor is off in FlectonePulse message.yml)", true);
+                case ACTIVE -> new Summary("colors " + status.size(), false);
+            };
         } catch (RuntimeException | LinkageError e) {
-            logger.warning("[FlectonePulse] Could not read the fcolor palette (" + e.getClass().getSimpleName()
-                    + ": " + e.getMessage() + ") - <fcolor:N> tags are a no-op.");
+            return new Summary("colors unavailable (" + PluginLog.describe(e) + ")", true);
         }
     }
 

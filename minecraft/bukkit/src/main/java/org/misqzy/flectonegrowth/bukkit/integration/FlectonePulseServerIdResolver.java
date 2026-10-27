@@ -34,8 +34,7 @@ public final class FlectonePulseServerIdResolver {
         }
         if (serverId == null || serverId.isBlank()) return fallback;
 
-        plugin.getLogger().info("Using FlectonePulse's configured server id (\"" + serverId
-                + "\") instead of the server key from FlectoneGrowth's own config.yml.");
+        plugin.getLogger().fine("Using FlectonePulse's server id \"" + serverId + "\" instead of the one in config.yml.");
         return serverId;
     }
 

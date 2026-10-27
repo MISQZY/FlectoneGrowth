@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.misqzy.flectonegrowth.common.config.ConfigView;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -21,7 +22,14 @@ public final class FlectonePulseHealthCheck {
 
     private FlectonePulseHealthCheck() {}
 
-    /** Safe from any thread: off the main thread it re-schedules itself there (Bukkit's plugin manager is main-thread-only). */
+    /** Last line logged, so identical re-checks (reloads, FlectonePulse reloads) stay quiet. */
+    private static volatile String lastSummary;
+
+    /**
+     * Logs at most one concise line: nothing at INFO when FlectonePulse is absent or switched off, otherwise
+     * {@code FlectonePulse: colors 5, server-id "main", dispatch on} (WARNING if something is not working).
+     * Safe from any thread: off the main thread it re-schedules itself there (Bukkit's plugin manager is main-thread-only).
+     */
     public static void logSummary(JavaPlugin plugin, ConfigView integrations) {
         if (!Bukkit.isPrimaryThread()) {
             if (plugin.isEnabled()) Bukkit.getScheduler().runTask(plugin, () -> logSummary(plugin, integrations));
@@ -30,15 +38,13 @@ public final class FlectonePulseHealthCheck {
         Logger logger = plugin.getLogger();
 
         if (!integrations.getBoolean("flectonepulse.enabled", true)) {
-            logger.info("[FlectonePulse] All integrations disabled via integrations.yml - working standalone.");
+            logger.fine("FlectonePulse integration is disabled in integrations.yml.");
             return;
         }
         if (!FlectonePulseAccess.isPluginEnabled()) {
-            logger.info("[FlectonePulse] Not installed/enabled - working standalone.");
+            logger.fine("FlectonePulse not found, running standalone.");
             return;
         }
-
-        FlectonePulseColorResolver.logDiagnostics(plugin, integrations);
 
         Boolean reachable;
         try {
@@ -47,27 +53,34 @@ public final class FlectonePulseHealthCheck {
             reachable = null;
         }
         if (reachable == null || !reachable) {
-            logger.warning("[FlectonePulse] Server-id reuse and message dispatch fall back to local behaviour: "
-                    + FlectonePulseAccess.diagnose() + ".");
+            emit(logger, true, "FlectonePulse found but its API is unreachable (" + FlectonePulseAccess.diagnose()
+                    + "), using local fallbacks");
             return;
         }
 
+        boolean problem = false;
+        StringBuilder line = new StringBuilder("FlectonePulse: ");
+
+        FlectonePulseColorResolver.Summary colors = FlectonePulseColorResolver.summarize(integrations);
+        line.append(colors.text());
+        problem |= colors.problem();
+
+        line.append(", server-id ");
         if (!integrations.getBoolean("flectonepulse.server-id", true)) {
-            logger.info("[FlectonePulse] server-id reuse disabled via integrations.yml.");
+            line.append("off");
         } else {
             String serverId = null;
             try {
                 serverId = FlectonePulseServerIdResolver.Read.serverId();
             } catch (RuntimeException | LinkageError ignored) {
-                // reported as inactive below
+                // reported as "own" below
             }
-            logger.info("[FlectonePulse] server-id reuse " + (serverId == null || serverId.isBlank()
-                    ? "inactive (FlectonePulse's `server` key is blank) - using FlectoneGrowth's own."
-                    : "active (\"" + serverId + "\")."));
+            line.append(serverId == null || serverId.isBlank() ? "own" : "\"" + serverId + "\"");
         }
 
+        line.append(", dispatch ");
         if (!integrations.getBoolean("flectonepulse.message-dispatch", true)) {
-            logger.info("[FlectonePulse] message dispatch disabled via integrations.yml - local rendering only.");
+            line.append("off");
         } else {
             boolean ready;
             try {
@@ -75,10 +88,17 @@ public final class FlectonePulseHealthCheck {
             } catch (RuntimeException | LinkageError e) {
                 ready = false;
             }
-            logger.info("[FlectonePulse] message dispatch " + (ready
-                    ? "active - player messages go through FlectonePulse first."
-                    : "unavailable right now (FPlayerService/MessageDispatcher not reachable) - local rendering only."));
+            line.append(ready ? "on" : "unavailable");
+            problem |= !ready;
         }
+        emit(logger, problem, line.toString());
+    }
+
+    private static void emit(Logger logger, boolean problem, String line) {
+        String previous = lastSummary;
+        lastSummary = line;
+        Level level = line.equals(previous) ? Level.FINE : (problem ? Level.WARNING : Level.INFO);
+        logger.log(level, line);
     }
 
     private static final class Probe {

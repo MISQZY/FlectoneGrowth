@@ -512,10 +512,8 @@ public final class GrowthEngine {
             // continuing would hide that the player's persisted custom
             // scale is now above their new gender's cap until an admin
             // happens to notice via /height or the raw DB. Surface it.
-            platform.logger().warning("setGender(" + uuid + ", " + gender.key() + "): gender saved, but "
-                    + "clamping the existing custom scale (" + currentCustom + ") down to the new max ("
-                    + newMax + ") failed to persist - the stored custom scale now exceeds this gender's cap "
-                    + "until it's re-set or storage is reachable again.");
+            platform.logger().warning("Gender " + gender.key() + " saved for " + uuid + ", but lowering the custom scale "
+                    + currentCustom + " to the new max " + newMax + " failed to save; the stored scale exceeds the cap until it is re-set.");
         }
         return persisted;
     }

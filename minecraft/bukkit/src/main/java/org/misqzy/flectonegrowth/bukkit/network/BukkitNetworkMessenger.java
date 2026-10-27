@@ -40,9 +40,8 @@ public final class BukkitNetworkMessenger implements NetworkMessenger, PluginMes
     public void broadcast(SyncMessage message) {
         Player carrier = Bukkit.getServer().getOnlinePlayers().stream().findAny().orElse(null);
         if (carrier == null) {
-            plugin.getLogger().warning("Could not relay a " + message.type() + " sync message for "
-                    + message.playerUuid() + " - no online player on this server to carry it. Other servers will "
-                    + "pick up the change from the database on this player's next join/tick instead.");
+            plugin.getLogger().fine("Sync message " + message.type() + " for " + message.playerUuid()
+                    + " not relayed: no online player to carry it");
             return;
         }
         carrier.sendPluginMessage(plugin, SyncMessageCodec.CHANNEL, SyncMessageCodec.encode(message));
@@ -61,7 +60,7 @@ public final class BukkitNetworkMessenger implements NetworkMessenger, PluginMes
         try {
             currentHandler.accept(SyncMessageCodec.decode(bytes));
         } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("Failed to decode incoming sync message: " + e.getMessage());
+            org.misqzy.flectonegrowth.common.log.PluginLog.warn(plugin.getLogger(), "Decoding sync message", e);
         }
     }
 }

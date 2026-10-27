@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.logging.Level;
+import org.misqzy.flectonegrowth.common.log.PluginLog;
 import java.util.logging.Logger;
 
 /**
@@ -56,7 +56,7 @@ public final class YamlStorage implements Storage {
 
             if (!file.exists()) {
                 if (!file.createNewFile() && !file.exists()) {
-                    logger.severe("Failed to initialise YAML storage: could not create " + file.getAbsolutePath());
+                    logger.severe("YAML initialisation failed: could not create " + file.getAbsolutePath());
                     return false;
                 }
             } else {
@@ -72,7 +72,7 @@ public final class YamlStorage implements Storage {
             section("players");
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "Failed to initialise YAML storage: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML initialisation", e);
             return false;
         }
     }
@@ -142,7 +142,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML setCustomScale: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML setCustomScale", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -159,7 +159,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML removeCustomScale: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML removeCustomScale", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -194,7 +194,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML setGenderKey: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML setGenderKey", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -229,7 +229,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML setGrowthTimeSeconds: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML setGrowthTimeSeconds", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -274,7 +274,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML recordJoin: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML recordJoin", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -297,7 +297,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML checkpointPlayTime: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML checkpointPlayTime", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -321,7 +321,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML addPlayTime: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML addPlayTime", e);
             return false;
         } finally {
             lock.writeLock().unlock();
@@ -364,7 +364,7 @@ public final class YamlStorage implements Storage {
             persist();
             return true;
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "YAML upsertUsername: " + e.getMessage(), e);
+            PluginLog.error(logger, "YAML upsertUsername", e);
             return false;
         } finally {
             lock.writeLock().unlock();
