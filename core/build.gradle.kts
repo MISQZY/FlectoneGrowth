@@ -15,6 +15,18 @@ dependencies {
     compileOnly("org.mariadb.jdbc:mariadb-java-client:${project.findProperty("mariadbVersion")}")
 
     compileOnly("org.jetbrains:annotations:24.1.0")
+
+    testImplementation(platform("org.junit:junit-bom:${project.findProperty("junitVersion")}"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // H2 is compileOnly above (the platform plugin supplies it at runtime); storage tests need it for real.
+    testRuntimeOnly("com.h2database:h2:${project.findProperty("h2Version")}")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    // Message-catalog tests read the bundled localizations straight from the bukkit module.
+    systemProperty("localizations.dir", rootProject.file("minecraft/bukkit/src/main/resources/localizations").absolutePath)
 }
 
 // core is a plain library jar consumed by every platform module - it is
