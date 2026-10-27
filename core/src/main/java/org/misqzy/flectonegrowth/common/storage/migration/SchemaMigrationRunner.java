@@ -15,7 +15,8 @@ import java.util.List;
  * MySQL/MariaDB implicitly auto-commit each DDL statement regardless of this
  * setting, so this guarantee is H2-only; MySQL/MariaDB migration steps still
  * need to stay individually re-runnable (e.g. tolerate "duplicate column" on
- * retry) if they ever gain more than one statement.</p>
+ * retry) if they ever gain more than one statement. A {@code CREATE INDEX} that
+ * fails with MySQL's duplicate-key-name error is treated as already applied.</p>
  */
 public final class SchemaMigrationRunner {
 

@@ -6,10 +6,12 @@
 # <red> is reserved for errors/failures - every other color comes from
 # colors.primary/colors.secondary above.
 #
-# <primary>/<secondary>/<fcolor:N> apply forward from that point (like
-# FlectonePulse's own <fcolor:N>) rather than being scoped to their </tag> -
-# after a short inner span (e.g. a name), re-open the surrounding color
-# explicitly to return to it, don't rely on the closing tag to restore it.
+# <primary>/<secondary> are scoped: </primary>/</secondary> end the color and
+# restore the outer one (nesting works). <fcolor:N> is scoped too when the
+# message is rendered locally (</fcolor:N>, or bare </fcolor> for the latest),
+# but on the FlectonePulse dispatch path </fcolor...> is stripped, so there
+# fcolor applies forward until the next color change - re-open a color
+# explicitly after a short fcolor span in messages sent through FlectonePulse.
 
 command:
   players-only: '<red>Эта команда доступна только игрокам.</red>'

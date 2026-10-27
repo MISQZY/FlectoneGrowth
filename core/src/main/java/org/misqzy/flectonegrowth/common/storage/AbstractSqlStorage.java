@@ -3,6 +3,7 @@ package org.misqzy.flectonegrowth.common.storage;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.misqzy.flectonegrowth.common.domain.PlayTime;
+import org.misqzy.flectonegrowth.common.domain.StoredPlayerData;
 import org.misqzy.flectonegrowth.common.storage.migration.LegacyTableMigration;
 import org.misqzy.flectonegrowth.common.storage.migration.SchemaVersionStore;
 
@@ -101,7 +102,7 @@ public abstract class AbstractSqlStorage implements Storage {
             executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.player() + " (" +
                             "id INT AUTO_INCREMENT PRIMARY KEY, uuid VARCHAR(36) NOT NULL UNIQUE, " +
-                            "username VARCHAR(16)" + TABLE_SUFFIX);
+                            "username VARCHAR(16), INDEX idx_player_username (username)" + TABLE_SUFFIX);
 
             executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.scales() + " (" +
@@ -157,6 +158,11 @@ public abstract class AbstractSqlStorage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             SchemaVersionStore.migrateIfNeeded(conn, type(), tables, upsertSchemaVersionSql, pluginVersion, logger, storageName());
         }
+    }
+
+    @Override
+    public StoredPlayerData loadStoredData(UUID uuid, String server) {
+        return SqlOps.loadStoredData(dataSource, tables, uuid, server, logger, storageName());
     }
 
     @Override
@@ -339,7 +345,10 @@ public abstract class AbstractSqlStorage implements Storage {
     }
 
     /**
-     * Minecraft usernames aren't permanently tied to a uuid - Mojang lets a
+     * {@code username = ?} is already case-insensitive here (the column is utf8mb4_unicode_ci - see the
+     * 0.2.11 schema migration, which also pins that and adds the index these lookups rely on).
+     *
+     * <p>Minecraft usernames aren't permanently tied to a uuid - Mojang lets a
      * player rename, and whoever's row still carries their old name would
      * otherwise sit there indefinitely as a second, stale claim on it (this
      * class never deletes a player row). With two rows both matching a name,
@@ -352,7 +361,7 @@ public abstract class AbstractSqlStorage implements Storage {
     public boolean upsertUsername(UUID uuid, String username) {
         try (Connection conn = dataSource.getConnection()) {
             try (PreparedStatement clearStale = conn.prepareStatement(
-                    "UPDATE " + tables.player() + " SET username = NULL WHERE LOWER(username) = LOWER(?) AND uuid <> ?")) {
+                    "UPDATE " + tables.player() + " SET username = NULL WHERE username = ? AND uuid <> ?")) {
                 clearStale.setString(1, username);
                 clearStale.setString(2, uuid.toString());
                 clearStale.executeUpdate();
@@ -383,7 +392,7 @@ public abstract class AbstractSqlStorage implements Storage {
     @Override
     public UUID findUuidByUsername(String username) {
         return SqlOps.query(dataSource,
-                "SELECT uuid FROM " + tables.player() + " WHERE LOWER(username) = LOWER(?)",
+                "SELECT uuid FROM " + tables.player() + " WHERE username = ?",
                 stmt -> stmt.setString(1, username),
                 rs -> UUID.fromString(rs.getString("uuid")), null,
                 logger, storageName(), "findUuidByUsername");

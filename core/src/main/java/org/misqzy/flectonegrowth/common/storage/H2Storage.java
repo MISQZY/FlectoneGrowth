@@ -3,6 +3,7 @@ package org.misqzy.flectonegrowth.common.storage;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.misqzy.flectonegrowth.common.domain.PlayTime;
+import org.misqzy.flectonegrowth.common.domain.StoredPlayerData;
 import org.misqzy.flectonegrowth.common.storage.migration.LegacyTableMigration;
 import org.misqzy.flectonegrowth.common.storage.migration.SchemaVersionStore;
 
@@ -112,7 +113,9 @@ public final class H2Storage implements Storage {
             executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.player() + " (" +
                             "id INT AUTO_INCREMENT PRIMARY KEY, uuid VARCHAR(36) NOT NULL UNIQUE, " +
-                            "username VARCHAR(16))");
+                            "username VARCHAR_IGNORECASE(16))");
+            executeUpdate(conn,
+                    "CREATE INDEX IF NOT EXISTS idx_" + tables.player() + "_username ON " + tables.player() + " (username)");
             executeUpdate(conn,
                     "CREATE TABLE IF NOT EXISTS " + tables.scales() + " (" +
                             "player_id INT PRIMARY KEY, scale DOUBLE NOT NULL, " +
@@ -165,6 +168,11 @@ public final class H2Storage implements Storage {
         try (Connection conn = dataSource.getConnection()) {
             SchemaVersionStore.migrateIfNeeded(conn, StorageType.H2, tables, upsertSchemaVersionSql, pluginVersion, logger, "H2");
         }
+    }
+
+    @Override
+    public StoredPlayerData loadStoredData(UUID uuid, String server) {
+        return SqlOps.loadStoredData(dataSource, tables, uuid, server, logger, "H2");
     }
 
     @Override
@@ -371,12 +379,12 @@ public final class H2Storage implements Storage {
         }
     }
 
-    /** See {@code AbstractSqlStorage}'s twin for why any other row currently claiming {@code username} gets cleared first - a Mojang rename otherwise leaves a stale second claim on it forever, ambiguous for {@link #findUuidByUsername}. */
+    /** {@code username} is VARCHAR_IGNORECASE (0.2.11 migration), so {@code =} is case-insensitive and indexed. See {@code AbstractSqlStorage}'s twin for why any other row currently claiming {@code username} gets cleared first - a Mojang rename otherwise leaves a stale second claim on it forever, ambiguous for {@link #findUuidByUsername}. */
     @Override
     public boolean upsertUsername(UUID uuid, String username) {
         try (Connection conn = dataSource.getConnection()) {
             try (PreparedStatement clearStale = conn.prepareStatement(
-                    "UPDATE " + tables.player() + " SET username = NULL WHERE LOWER(username) = LOWER(?) AND uuid <> ?")) {
+                    "UPDATE " + tables.player() + " SET username = NULL WHERE username = ? AND uuid <> ?")) {
                 clearStale.setString(1, username);
                 clearStale.setString(2, uuid.toString());
                 clearStale.executeUpdate();
@@ -406,7 +414,7 @@ public final class H2Storage implements Storage {
     @Override
     public UUID findUuidByUsername(String username) {
         return SqlOps.query(dataSource,
-                "SELECT uuid FROM " + tables.player() + " WHERE LOWER(username) = LOWER(?)",
+                "SELECT uuid FROM " + tables.player() + " WHERE username = ?",
                 stmt -> stmt.setString(1, username),
                 rs -> UUID.fromString(rs.getString("uuid")), null,
                 logger, "H2", "findUuidByUsername");

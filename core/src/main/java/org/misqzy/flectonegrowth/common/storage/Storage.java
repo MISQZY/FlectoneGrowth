@@ -2,6 +2,7 @@ package org.misqzy.flectonegrowth.common.storage;
 
 import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.domain.PlayTime;
+import org.misqzy.flectonegrowth.common.domain.StoredPlayerData;
 
 import java.util.UUID;
 
@@ -56,6 +57,18 @@ public interface Storage {
      * that's already being tracked.
      */
     boolean addPlayTime(UUID uuid, String server, long secondsToAdd, long nowEpochSeconds);
+
+    /**
+     * Scale, gender, growth time and the {@code server} playtime bucket in one
+     * round-trip. The default just composes the individual getters (fine for
+     * YAML); SQL backends override it with a single joined query. A backend
+     * that fails to read returns {@code null} (as opposed to
+     * {@link StoredPlayerData#EMPTY} for "no rows"), so callers can avoid
+     * writing defaults over data they simply failed to read.
+     */
+    default StoredPlayerData loadStoredData(UUID uuid, String server) {
+        return new StoredPlayerData(getCustomScale(uuid), getGenderKey(uuid), getGrowthTimeSeconds(uuid), getPlayTime(uuid, server));
+    }
 
     // Player identity (backing table every other one now references by FK -
     // see the "player" table). Get-or-create semantics: any of the above

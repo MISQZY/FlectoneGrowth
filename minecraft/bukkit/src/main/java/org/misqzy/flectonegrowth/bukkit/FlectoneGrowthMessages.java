@@ -119,23 +119,15 @@ public final class FlectoneGrowthMessages {
     }
 
     /**
-     * Guards the call into {@link FlectonePulseMessageDispatcher} itself, not
-     * just its body - a real live-deploy crash: {@code trySend}'s own
-     * internal try/catch only covers failures while its bytecode is
-     * *executing*, but with FlectonePulse not installed, the JVM fails to
-     * *link/verify* the {@link FlectonePulseMessageDispatcher} class the
-     * first time any of its methods is actively called at all (its bytecode
-     * needs FlectonePulse's {@code FEntity} type resolvable to type-check
-     * {@code MessageContext.Builder#sender(FEntity)}/{@code receiver(FEntity)}).
-     * That failure - a {@link LinkageError} - is thrown at the call site in
-     * the *caller*, before a single instruction of {@code trySend} ever
-     * runs, so no try/catch inside that method can ever see it. Same root
-     * cause as {@code FlectonePulseAccess.tryGetFileFacade}'s fix, one class
-     * over.
+     * Guards the call into {@link FlectonePulseMessageDispatcher}: a {@link LinkageError}
+     * (FlectonePulse's classes missing or incompatible) or {@link RuntimeException} from the
+     * dispatch means "not handed over", so the caller falls back to local rendering.
+     * {@code true} only means FlectonePulse accepted the message for (possibly asynchronous)
+     * delivery, not that it arrived.
      */
     private static boolean tryFlectonePulseSend(Player player, Messages messages, String locale, String key, Map<String, Object> placeholders) {
         try {
-            return FlectonePulseMessageDispatcher.trySend(player, messages.rawForDispatch(locale, key, placeholders), messages.externalDispatchResolvers(placeholders));
+            return FlectonePulseMessageDispatcher.trySend(player, messages.rawForDispatch(locale, key, placeholders));
         } catch (RuntimeException | LinkageError e) {
             return false;
         }

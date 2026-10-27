@@ -23,6 +23,7 @@ import org.misqzy.flectonegrowth.bukkit.config.ServerIdProvisioner;
 import org.misqzy.flectonegrowth.bukkit.config.YamlFileLoader;
 import org.misqzy.flectonegrowth.bukkit.integration.FlectonePulseColorResolver;
 import org.misqzy.flectonegrowth.bukkit.integration.FlectonePulseHealthCheck;
+import org.misqzy.flectonegrowth.bukkit.integration.FlectonePulseLifecycleListener;
 import org.misqzy.flectonegrowth.bukkit.integration.FlectonePulseServerIdResolver;
 import org.misqzy.flectonegrowth.bukkit.integration.PlaceholderAPIHook;
 import org.misqzy.flectonegrowth.bukkit.listener.PlayerConnectionListener;
@@ -47,6 +48,14 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
     private PlaceholderAPIHook placeholderHook;
     private UpdateNotifier updateNotifier;
 
+    /**
+     * The {@code integrations.yml} view currently in effect - read by
+     * {@link FlectonePulseLifecycleListener}'s permanent listener every time
+     * it fires, so it always sees whatever's current instead of whatever was
+     * loaded at {@link #onEnable()}. Updated here and in {@link #reload}.
+     */
+    private volatile ConfigView integrationsConfig;
+
     @Override
     public void onEnable() {
         new LegacyDataFolderMigrator(this).migrateIfNeeded();
@@ -66,7 +75,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
         new CommandRegistry(this, core);
 
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI") && core.integrations().placeholderApiEnabled()) {
-            placeholderHook = new PlaceholderAPIHook(core);
+            placeholderHook = new PlaceholderAPIHook(core, scheduler);
             placeholderHook.register();
         }
 
@@ -76,6 +85,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        FlectonePulseLifecycleListener.shutdown();
         Bukkit.getServicesManager().unregisterAll(this);
         if (ticker != null) ticker.stop();
         if (placeholderHook != null) placeholderHook.unregister();
@@ -125,6 +135,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
 
                 ConfigView mainConfig = loadConfig("config.yml");
                 ConfigView integrationsConfig = loadConfig("integrations.yml");
+                this.integrationsConfig = integrationsConfig;
                 FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
                 core.reload(new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
                         () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));
@@ -150,6 +161,7 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
     private FlectoneGrowthCore bootstrapCore() {
         ConfigView mainConfig = loadConfig("config.yml");
         ConfigView integrationsConfig = loadConfig("integrations.yml");
+        this.integrationsConfig = integrationsConfig;
 
         scheduler = new BukkitScheduler(this);
         NetworkMessenger messenger = createNetworkMessenger(mainConfig);
@@ -159,6 +171,13 @@ public final class FlectoneGrowthPlugin extends JavaPlugin {
         BukkitModule bukkitModule = new BukkitModule(scheduler, messenger, this::findOnline);
 
         FlectonePulseHealthCheck.logSummary(this, integrationsConfig);
+        // Permanent - FlectonePulse drops its own non-permanent listeners on every
+        // /flectonepulse reload, so this must only be called once per onEnable(),
+        // never repeated from this plugin's own /flectonegrowth reload path (see
+        // FlectonePulseLifecycleListener's class javadoc for why a second call
+        // would double up event handling instead of just refreshing state).
+        FlectonePulseLifecycleListener.registerOnce(this, () -> this.integrationsConfig);
+
         return FlectoneGrowthCore.bootstrap(platform, bukkitModule,
                 new ConfigBundle(mainConfig, loadConfig("gender.yml"), loadAllMessages(), integrationsConfig,
                         () -> FlectonePulseColorResolver.resolveDefaultColors(integrationsConfig)));

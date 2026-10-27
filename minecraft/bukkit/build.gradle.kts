@@ -2,13 +2,12 @@ plugins {
     id("com.gradleup.shadow")
 }
 
+
 repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     // The old /content/repositories/placeholders/ path 404s now; ExtendedClip
     // moved their release repo to /releases/ (verified live, see docs/BUILD.md).
     maven("https://repo.extendedclip.com/releases/")
-    // flectonePulseVersion is a real Maven Central release - no snapshot
-    // repository needed, mavenCentral() (root build.gradle.kts) covers it.
 }
 
 dependencies {
@@ -22,11 +21,10 @@ dependencies {
     // it's detected at runtime instead of adding a paper-api dependency.
     compileOnly("org.spigotmc:spigot-api:${project.findProperty("spigotVersion")}")
     compileOnly("me.clip:placeholderapi:${project.findProperty("placeholderapiVersion")}")
-    // FlectonePulse's own published API module - see integration/FlectonePulseAccess.
-    compileOnly("net.flectone.pulse:core:${project.findProperty("flectonePulseVersion")}")
-    // Needed only for javac to resolve type annotations on FlectonePulse's
-    // classes - see the comment on commonsLang3Version in gradle.properties.
-    compileOnly("org.apache.commons:commons-lang3:${project.findProperty("commonsLang3Version")}")
+    // FlectonePulse's stable public API (Maven Central). compileOnly: the
+    // FlectonePulse plugin provides it at runtime (softdepend), and shadowJar
+    // below additionally excludes net/flectone/** as a safeguard.
+    compileOnly("net.flectone.pulse:api:${project.findProperty("flectonePulseVersion")}")
     // Unlike paper-api, spigot-api's own pom does not pull in com.mojang:brigadier
     // transitively (verified: no such dependency in its published pom.xml) - but
     // cloud-bukkit transitively depends on cloud-brigadier, whose compiled classes
@@ -68,12 +66,20 @@ dependencies {
 }
 
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
-    archiveClassifier.set("")
+    // This is now an internal intermediate, not the final artifact (see
+    // pluginJar below) - written to a separate directory (not the default
+    // build/libs/) so only pluginJar's own output ever shows up there,
+    // rather than sitting right next to it under a distinguishing classifier
+    // that's still easy to mistake for a second real build artifact.
+    archiveClassifier.set("premerge")
+    destinationDirectory.set(layout.buildDirectory.dir("intermediates/shadow"))
     relocate("com.google.inject", "org.misqzy.flectonegrowth.bukkit.libs.guice")
     relocate("com.zaxxer.hikari", "org.misqzy.flectonegrowth.bukkit.libs.hikari")
     relocate("org.yaml.snakeyaml", "org.misqzy.flectonegrowth.bukkit.libs.snakeyaml")
     relocate("org.incendo.cloud", "org.misqzy.flectonegrowth.bukkit.libs.cloud")
     relocate("net.kyori", "org.misqzy.flectonegrowth.bukkit.libs.kyori")
+    // Never bundle (or relocate) FlectonePulse's API - the real plugin supplies it.
+    exclude("net/flectone/**")
     //
     // minimize() is deliberately NOT used: it depends on org.vafer:jdependency,
     // which bundles an ASM version that cannot parse Java 25 class files
@@ -83,8 +89,67 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     // tooling catches up.
 }
 
+// The plain `jar` task's own output would otherwise collide with pluginJar's
+// (below) path - it never produced anything meaningful on its own anyway
+// (shadowJar/pluginJar have always been the real output), so disabling it
+// outright is simpler than juggling classifiers three ways.
+tasks.named("jar") {
+    enabled = false
+}
+
+/**
+ * Zip-merges this module's own shadowJar (already fully relocated, above)
+ * with minecraft:velocity's plain jar output, as
+ * `FlectoneGrowth-Bukkit-<version>.jar` - the one file this build actually
+ * produces for anyone to install; minecraft:velocity no longer has a
+ * distributable jar of its own to grab separately (its `jar` task output is
+ * now purely an internal input to this one, consumed straight from its own
+ * module's build/libs/). Works dropped into either a Bukkit-family server's
+ * plugins/ folder (reads plugin.yml, loads FlectoneGrowthPlugin) or a
+ * Velocity proxy's (reads velocity-plugin.json, loads
+ * FlectoneGrowthVelocityPlugin) - see docs/ARCHITECTURE.md.
+ *
+ * Deliberately NOT done by adding minecraft:velocity as a compileOnly/
+ * implementation dependency of this module and letting shadowJar merge it
+ * directly: that route was tried and reverted after decompiling the actual
+ * merged output with javap - shadowJar's relocators rewrite EVERY class's
+ * bytecode uniformly, including velocity's. FlectoneGrowthVelocityPlugin's
+ * constructor is annotated @com.google.inject.Inject (via Lombok's
+ * onConstructor_) for Velocity's own injector to find via reflection at
+ * plugin-load time; the guice relocation above rewrote that to
+ * @org.misqzy.flectonegrowth.bukkit.libs.guice.Inject in the merged class
+ * file, which Velocity's own (unrelocated) Guice on the proxy's classpath
+ * would never recognize as an injection point - a real, verified breakage,
+ * not a hypothetical. Shadow's per-relocator `exclude(...)` doesn't help
+ * either: it's matched against the class being relocated *to* (i.e. paths
+ * under com.google.inject.**), not which class is doing the referencing, so
+ * excluding org.misqzy.flectonegrowth.velocity.** there is simply a no-op
+ * (confirmed by testing it before writing this version).
+ *
+ * This merge-after-the-fact approach sidesteps the problem entirely: nothing
+ * from minecraft:velocity's jar ever passes through this module's relocators
+ * at all, so FlectoneGrowthVelocityPlugin's bytecode stays byte-for-byte
+ * identical to what minecraft:velocity's own `jar` task already produces
+ * (Guice's own Inject annotation class itself isn't bundled here either way -
+ * Velocity supplies it externally from the proxy's own classpath, same as
+ * always; only the *reference* to it needed to stay untouched).
+ */
+val pluginJar = tasks.register<Jar>("pluginJar") {
+    dependsOn(tasks.named("shadowJar"), project(":minecraft:velocity").tasks.named("jar"))
+    group = "build"
+    description = "Merges the Bukkit shadowJar and the Velocity jar into the one FlectoneGrowth-Bukkit-<version>.jar this build installs."
+    archiveBaseName.set("FlectoneGrowth-Bukkit")
+    archiveClassifier.set("")
+    archiveVersion.set(project.version.toString())
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from({ zipTree(tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile) })
+    from({ zipTree((project(":minecraft:velocity").tasks.named("jar").get() as Jar).archiveFile) })
+}
+
 tasks.build {
-    dependsOn(tasks.named("shadowJar"))
+    dependsOn(pluginJar)
 }
 
 tasks.named<ProcessResources>("processResources") {

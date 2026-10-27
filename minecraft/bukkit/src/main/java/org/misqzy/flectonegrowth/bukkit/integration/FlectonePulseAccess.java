@@ -2,85 +2,86 @@ package org.misqzy.flectonegrowth.bukkit.integration;
 
 import net.flectone.pulse.FlectonePulse;
 import net.flectone.pulse.FlectonePulseAPI;
-import net.flectone.pulse.util.file.FileFacade;
 import org.bukkit.Bukkit;
 
 /**
- * Shared entry point into FlectonePulse's actual Java API, used by both
- * {@link FlectonePulseServerIdResolver} and {@link FlectonePulseColorResolver}.
+ * Shared, never-throwing entry point into FlectonePulse's stable public API
+ * ({@code net.flectone.pulse:api}), used by every other class in this package.
  *
- * <p>{@code net.flectone.pulse:core} is published to Maven Central
- * (verified: {@code repo1.maven.org} resolves {@code core-1.12.2.jar}
- * directly) and, since some version, exposes a real static entry point:
- * {@code FlectonePulseAPI.getInstance()} returns the live {@code FlectonePulse}
- * instance, whose {@code <T> T get(Class<T>)} is a Guice service-locator
- * reaching its internal singletons - {@code FileFacade} in particular holds
- * every parsed config file ({@code config()}, {@code message()}, ...),
- * always reflecting FlectonePulse's current in-memory state (including its
- * own {@code /flectonepulse reload}). Confirmed the exact method signatures
- * used here by decompiling the real jar with {@code javap}, and compiled a
- * standalone test file against it - not guessed from documentation.</p>
+ * <p>FlectonePulse is only a {@code softdepend}, so its classes may be absent at
+ * runtime. The rule throughout this package: anything that mentions a
+ * {@code net.flectone.pulse.*} type lives in a small private nested class; the
+ * public entry points keep FlectonePulse types out of their signatures and call
+ * into those nested classes inside {@code try/catch (RuntimeException | LinkageError)}.
+ * A missing FlectonePulse therefore surfaces as a caught {@link NoClassDefFoundError}
+ * at that single call rather than as a failure to link the caller itself. Callers
+ * also keep their own {@code Class<?>} literals for FlectonePulse types inside such
+ * nested classes, never in a frame outside the guard.</p>
  *
- * <p>This is still FlectonePulse's internal surface, not a documented,
- * version-stability-guaranteed public API, so every call in this class is
- * defensively wrapped: {@link RuntimeException} covers Guice
- * ({@code ConfigurationException}/{@code ProvisionException}) if a binding
- * is ever missing, and {@link LinkageError} covers an older FlectonePulse
- * version that predates one of these classes/methods entirely
- * ({@code NoSuchMethodError}/{@code NoClassDefFoundError}). Either way,
- * callers fall back to their own alternative rather than failing.</p>
- *
- * <p>Deliberately silent (no logging) - {@link #tryGetFileFacade()} backs
- * {@code Messages}' per-message {@code <fcolor:N>} lookup, so it can run on
- * every single chat/command message. For a one-time, admin-visible report of
- * exactly which step this fails at (not installed vs. not ready vs. present
- * but threw vs. fcolor module disabled in FlectonePulse's own config), see
- * {@link FlectonePulseColorResolver#logDiagnostics}, run once per
- * {@code onEnable()}/{@code reload()} instead.</p>
- *
- * <p>{@link #tryGet} is the same lookup generalised to any of FlectonePulse's
- * Guice-managed singletons - {@link FlectonePulseMessageDispatcher} uses it
- * for {@code FPlayerService}/{@code MessagePipeline}/{@code MessageDispatcher}.</p>
+ * <p>Nothing here ever hands FlectonePulse an object of a relocated type: this
+ * plugin's shaded {@code net.kyori} is a different class set from the plain
+ * {@code net.kyori} FlectonePulse uses.</p>
  */
 final class FlectonePulseAccess {
 
-    /** The Bukkit plugin name FlectonePulse registers under - the single source of truth every class in this package checks {@link Bukkit#getPluginManager()} against. */
+    /** The Bukkit plugin name FlectonePulse registers under. */
     static final String PLUGIN_NAME = "FlectonePulse";
 
     private FlectonePulseAccess() {}
 
-    /**
-     * FlectonePulse's live {@link FileFacade}, or {@code null} if unavailable
-     * for any reason.
-     *
-     * <p>Needs its own try/catch around the {@code FileFacade.class} literal
-     * itself, not just the one inside {@link #tryGet} - a real live-deploy
-     * crash: with FlectonePulse not installed, {@code net.flectone.pulse.*}
-     * isn't on the classpath at all, so resolving that class literal throws
-     * {@link NoClassDefFoundError} in <em>this</em> method, one frame before
-     * {@link #tryGet}'s own try block is ever entered. {@code tryGet}'s catch
-     * can't help - by the time it would run, the failure already happened in
-     * its caller.</p>
-     */
-    static FileFacade tryGetFileFacade() {
+    /** {@code true} if the FlectonePulse plugin is currently enabled. Touches no FlectonePulse class. */
+    static boolean isPluginEnabled() {
         try {
-            return tryGet(FileFacade.class);
+            return Bukkit.getPluginManager().isPluginEnabled(PLUGIN_NAME);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * One of FlectonePulse's injected services, or {@code null} if unavailable for any reason
+     * (not installed, shutting down, not ready yet, binding missing, incompatible version).
+     * Silent and never throws, so it is safe on the per-message hot path.
+     *
+     * <p>Callers must evaluate the {@code type} class literal inside their own guarded nested
+     * class - see the class javadoc.</p>
+     */
+    static <T> T tryGet(Class<T> type) {
+        if (!isPluginEnabled()) return null;
+        try {
+            return Live.get(type);
         } catch (RuntimeException | LinkageError e) {
             return null;
         }
     }
 
-    /** Any of FlectonePulse's Guice-managed singletons, or {@code null} if unavailable for any reason (not installed, not ready, or an incompatible version). */
-    static <T> T tryGet(Class<T> type) {
+    /** One-shot, human-readable reason {@link #tryGet} would currently return {@code null}. For the health check only. */
+    static String diagnose() {
+        if (!isPluginEnabled()) return "not installed/enabled";
         try {
-            if (!Bukkit.getPluginManager().isPluginEnabled(PLUGIN_NAME)) return null;
+            return Live.diagnose();
+        } catch (RuntimeException | LinkageError e) {
+            return "API unreachable (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")";
+        }
+    }
 
+    /** Holds every direct FlectonePulse reference of this class; loaded only after the plugin-enabled check. */
+    private static final class Live {
+        private Live() {}
+
+        static <T> T get(Class<T> type) {
+            if (FlectonePulseAPI.isDisabling()) return null;
             FlectonePulse instance = FlectonePulseAPI.getInstance();
             if (instance == null || !instance.isReady()) return null;
-
             return instance.get(type);
-        } catch (RuntimeException | LinkageError e) {
-            return null;
+        }
+
+        static String diagnose() {
+            if (FlectonePulseAPI.isDisabling()) return "FlectonePulse is shutting down";
+            FlectonePulse instance = FlectonePulseAPI.getInstance();
+            if (instance == null) return "FlectonePulseAPI.getInstance() is null (still starting?)";
+            if (!instance.isReady()) return "FlectonePulse is not ready yet";
+            return "ready";
         }
     }
 }

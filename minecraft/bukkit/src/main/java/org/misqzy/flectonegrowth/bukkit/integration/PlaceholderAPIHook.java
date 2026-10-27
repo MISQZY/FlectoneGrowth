@@ -8,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import org.misqzy.flectonegrowth.common.di.FlectoneGrowthCore;
 import org.misqzy.flectonegrowth.common.domain.OfflineProfile;
 import org.misqzy.flectonegrowth.common.lang.TimeFormatter;
+import org.misqzy.flectonegrowth.common.platform.Scheduler;
 import org.misqzy.flectonegrowth.common.service.GrowthEngine;
 import org.misqzy.flectonegrowth.common.service.ScaleMath;
 import org.misqzy.flectonegrowth.bukkit.BuildVersion;
@@ -17,9 +18,11 @@ import org.misqzy.flectonegrowth.bukkit.FlectoneGrowthMessages;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
@@ -55,21 +58,29 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
             "%flectonegrowth_has_custom_scale%"
     );
 
+    private static final Set<String> PLACEHOLDER_KEYS = PLACEHOLDERS.stream()
+            .map(p -> p.substring("%flectonegrowth_".length(), p.length() - 1))
+            .collect(Collectors.toUnmodifiableSet());
+
     /**
      * PAPI's placeholder API has no async contract - {@link #onRequest} must
-     * return a value immediately - so {@link #resolveOffline} has no choice
-     * but to hit storage synchronously (see {@link GrowthEngine#loadOffline}).
-     * A short-lived cache keeps that tolerable for the realistic worst case:
-     * a leaderboard/hologram/GUI plugin re-resolving several placeholders for
-     * the same set of offline players every refresh, which would otherwise
-     * multiply into that many blocking DB round-trips per refresh - often on
-     * the caller's own main thread.
+     * return a value immediately, and is often called on the main thread. So
+     * {@link #resolveOffline} never touches storage itself: a fresh cache hit
+     * is served as-is, a stale one is served as-is too (last-known value)
+     * while one deduplicated async refresh runs, and a cold miss returns an
+     * empty string while the first load runs - the next request (PAPI
+     * consumers re-resolve every refresh) then gets real data.
      */
     private static final long OFFLINE_CACHE_TTL_MILLIS = 3_000L;
+    /** A stale entry is only kept (and served while refreshing) this long; beyond it, it is evicted by the sweep. */
+    private static final long OFFLINE_CACHE_MAX_AGE_MILLIS = 10 * 60_000L;
+    private static final int OFFLINE_CACHE_MAX_ENTRIES = 2_048;
     private static final long OFFLINE_CACHE_SWEEP_EVERY = 200L;
 
     private final FlectoneGrowthCore core;
+    private final Scheduler scheduler;
     private final Map<UUID, CachedOfflineProfile> offlineCache = new ConcurrentHashMap<>();
+    private final Set<UUID> offlineLoadsInFlight = ConcurrentHashMap.newKeySet();
     private final AtomicLong offlineCacheWritesSinceSweep = new AtomicLong();
 
     private record CachedOfflineProfile(OfflineProfile profile, long fetchedAtMillis) {}
@@ -117,7 +128,11 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
      * get real data instead of PAPI's usual empty-string default.
      */
     private String resolveOffline(GrowthEngine engine, OfflinePlayer offlinePlayer, String params, String locale) {
-        OfflineProfile profile = loadOfflineCached(engine, offlinePlayer.getUniqueId());
+        // Unknown keys keep returning null without ever triggering a load.
+        if (!PLACEHOLDER_KEYS.contains(params.toLowerCase(Locale.ROOT))) return null;
+
+        OfflineProfile profile = cachedOfflineProfile(engine, offlinePlayer.getUniqueId());
+        if (profile == null) return ""; // first load still running - see the field javadoc above
         return resolve(params, new GrowthData(
                 () -> engine.effectiveScale(profile),
                 engine::minScale,
@@ -130,25 +145,42 @@ public final class PlaceholderAPIHook extends PlaceholderExpansion {
         ), locale);
     }
 
-    /** Serves a storage read from {@link #offlineCache} if it's still fresh, else fetches and caches a new one - see the field javadoc above. */
-    private OfflineProfile loadOfflineCached(GrowthEngine engine, UUID uuid) {
+    /** Pure cache read; schedules at most one async refresh per uuid when missing or stale. {@code null} on a cold miss. */
+    private OfflineProfile cachedOfflineProfile(GrowthEngine engine, UUID uuid) {
         long now = System.currentTimeMillis();
         CachedOfflineProfile cached = offlineCache.get(uuid);
         if (cached != null && now - cached.fetchedAtMillis() < OFFLINE_CACHE_TTL_MILLIS) {
             return cached.profile();
         }
-
-        OfflineProfile profile = engine.loadOffline(uuid);
-        offlineCache.put(uuid, new CachedOfflineProfile(profile, now));
-        sweepExpiredIfDue(now);
-        return profile;
+        refreshOfflineAsync(engine, uuid);
+        return cached != null ? cached.profile() : null;
     }
 
-    /** Opportunistically evicts expired entries every {@link #OFFLINE_CACHE_SWEEP_EVERY} writes, so the cache doesn't grow forever from one-off lookups of players never queried again. */
-    private void sweepExpiredIfDue(long now) {
-        if (offlineCacheWritesSinceSweep.incrementAndGet() < OFFLINE_CACHE_SWEEP_EVERY) return;
+    private void refreshOfflineAsync(GrowthEngine engine, UUID uuid) {
+        if (!offlineLoadsInFlight.add(uuid)) return;
+        try {
+            scheduler.runAsync(() -> {
+                try {
+                    OfflineProfile profile = engine.loadOffline(uuid);
+                    long now = System.currentTimeMillis();
+                    offlineCache.put(uuid, new CachedOfflineProfile(profile, now));
+                    sweepIfDue(now);
+                } finally {
+                    offlineLoadsInFlight.remove(uuid);
+                }
+            });
+        } catch (RuntimeException e) { // e.g. plugin disabled mid-call
+            offlineLoadsInFlight.remove(uuid);
+        }
+    }
+
+    /** Every {@link #OFFLINE_CACHE_SWEEP_EVERY} writes (or whenever over the size cap), evicts entries too old to be worth serving; a still-oversized cache is cleared outright (it is only a cache). */
+    private void sweepIfDue(long now) {
+        if (offlineCacheWritesSinceSweep.incrementAndGet() < OFFLINE_CACHE_SWEEP_EVERY
+                && offlineCache.size() <= OFFLINE_CACHE_MAX_ENTRIES) return;
         offlineCacheWritesSinceSweep.set(0L);
-        offlineCache.entrySet().removeIf(e -> now - e.getValue().fetchedAtMillis() >= OFFLINE_CACHE_TTL_MILLIS);
+        offlineCache.entrySet().removeIf(e -> now - e.getValue().fetchedAtMillis() >= OFFLINE_CACHE_MAX_AGE_MILLIS);
+        if (offlineCache.size() > OFFLINE_CACHE_MAX_ENTRIES) offlineCache.clear();
     }
 
     /**

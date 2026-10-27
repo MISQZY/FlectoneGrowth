@@ -22,11 +22,17 @@ public final class YamlConfigView implements ConfigView {
 
     private Object resolve(String path) {
         Object current = root;
-        for (String part : path.split("\\.")) {
+        // Hand-rolled split on '.': this runs on every message/PlaceholderAPI lookup, so no array/regex per call.
+        int start = 0;
+        int len = path.length();
+        while (true) {
             if (!(current instanceof Map<?, ?> map)) return null;
-            current = map.get(part);
+            int dot = path.indexOf('.', start);
+            int end = dot < 0 ? len : dot;
+            current = map.get(path.substring(start, end));
+            if (dot < 0) return current;
+            start = dot + 1;
         }
-        return current;
     }
 
     @Override

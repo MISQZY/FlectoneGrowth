@@ -13,6 +13,7 @@ import org.misqzy.flectonegrowth.common.domain.OfflineProfile;
 import org.misqzy.flectonegrowth.common.domain.PlayTime;
 import org.misqzy.flectonegrowth.common.domain.PlayerProfile;
 import org.misqzy.flectonegrowth.common.domain.ProfileCache;
+import org.misqzy.flectonegrowth.common.domain.StoredPlayerData;
 import org.misqzy.flectonegrowth.common.domain.UsernameCache;
 import org.misqzy.flectonegrowth.common.network.NetworkMessenger;
 import org.misqzy.flectonegrowth.common.network.SyncMessage;
@@ -95,6 +96,8 @@ public final class GrowthEngine {
 
     /** Hot-swaps config/storage/gender registry after a reload; safe to call from any thread (fields are volatile). */
     public void applyReload(CoreConfig newConfig, Storage newStorage, GenderRegistry newGenderRegistry) {
+        // Whatever the old storage persisted says nothing about the new one.
+        if (newStorage != this.storage) usernames.clear();
         this.config = newConfig;
         this.storage = newStorage;
         this.genderRegistry = newGenderRegistry;
@@ -157,24 +160,47 @@ public final class GrowthEngine {
             // (an INSERT ... SELECT id FROM player WHERE uuid=? on a fresh player) would
             // otherwise silently insert nothing. Also keeps the in-memory cache backing
             // resolveUuidByUsername warm for anyone who's joined since the last restart.
-            storage.upsertUsername(uuid, player.name());
-            usernames.put(uuid, player.name());
+            // Skipped when this exact (uuid, name) was already persisted by this process
+            // (a rejoin) - the row can't have changed, so the statements are pure overhead.
+            String name = player.name();
+            if (!usernames.isCurrent(uuid, name) && storage.upsertUsername(uuid, name)) {
+                usernames.put(uuid, name);
+            }
 
             boolean freshLoad = profiles.get(uuid) == null;
             PlayerProfile profile = profiles.getOrCreate(uuid, genderRegistry.getDefault());
+            String server = serverKey();
 
-            Double storedScale = storage.getCustomScale(uuid);
-            profile.setCustomScale(storedScale);
+            // One joined query for scale + gender + growth time + playtime bucket (was four).
+            // null = the read itself failed: then no defaults are written below, so a transient DB
+            // error can't overwrite real stored data with a fresh default.
+            StoredPlayerData stored = storage.loadStoredData(uuid, server);
+            StoredPlayerData data = stored != null ? stored : StoredPlayerData.EMPTY;
 
-            String genderKey = storage.getGenderKey(uuid);
-            profile.setGender(genderRegistry.resolve(genderKey));
+            profile.setCustomScale(data.customScale());
+            profile.setGender(genderRegistry.resolve(data.genderKey()));
+            // No gender row yet (this player's first-ever registration) - persist the
+            // resolved default immediately rather than leaving it purely in-memory, so
+            // it's on record from the start instead of only appearing once the player
+            // runs /gender manually. Only on a successful read of "no row": an existing
+            // gender is never rewritten.
+            if (stored != null && data.genderKey() == null) {
+                storage.setGenderKey(uuid, profile.gender().key());
+            }
 
-            timeAssigner.loadInto(profile);
+            timeAssigner.loadInto(profile, stored);
 
             if (config.networkSyncEnabled()) {
-                String server = serverKey();
-                if (freshLoad && config.networkIncludeServer()) playTimeTracker.recordJoin(profile, server);
-                else playTimeTracker.loadInto(profile, server);
+                PlayTime pt = data.playTime();
+                if (freshLoad && config.networkIncludeServer()) {
+                    long now = Instant.now().getEpochSecond();
+                    if (playTimeTracker.recordJoin(uuid, server, now)) {
+                        // Mirror what recordJoin just persisted instead of re-reading it.
+                        pt = pt == null ? new PlayTime(now, now, 0L, 1)
+                                : new PlayTime(pt.first(), now, pt.total(), pt.sessions() + 1);
+                    }
+                }
+                if (pt != null) profile.setPlayTime(pt.total(), pt.last(), pt.first(), pt.sessions());
             }
 
             platform.scheduler().runSync(() -> {
@@ -433,6 +459,14 @@ public final class GrowthEngine {
         // See setCustomScale's comment on profileAtCallTime for why this is captured up front
         // and compared by identity rather than re-fetched inside the runSync callback.
         PlayerProfile profileAtCallTime = profiles.get(uuid);
+        // Already this gender - skip the DB round-trip (and the sync broadcast) entirely
+        // rather than re-writing the same value. Only short-circuits off the cached
+        // in-memory profile, not a storage read, so an online player (the only kind this
+        // is ever called for - see GenderCommand) always has one to compare against.
+        if (profileAtCallTime != null && profileAtCallTime.gender().equals(gender)) {
+            if (onSuccess != null) onSuccess.run();
+            return;
+        }
         platform.scheduler().runAsync(() -> {
             boolean ok = storage.setGenderKey(uuid, gender.key());
             if (!ok) {
@@ -518,22 +552,19 @@ public final class GrowthEngine {
     }
 
     public OfflineProfile loadOffline(UUID uuid) {
-        Gender gender = genderRegistry.resolve(storage.getGenderKey(uuid));
-        Double customScale = storage.getCustomScale(uuid);
+        StoredPlayerData stored = storage.loadStoredData(uuid, serverKey());
+        if (stored == null) stored = StoredPlayerData.EMPTY;
+
+        Gender gender = genderRegistry.resolve(stored.genderKey());
+        Double customScale = stored.customScale();
 
         long targetGrowthSeconds = config.growTimeSeconds();
-        if (config.isRangeMode()) {
-            Long stored = storage.getGrowthTimeSeconds(uuid);
-            if (stored != null) targetGrowthSeconds = stored;
-        }
+        if (config.isRangeMode() && stored.growthSeconds() != null) targetGrowthSeconds = stored.growthSeconds();
 
         long playedSeconds = 0L;
-        if (config.networkSyncEnabled()) {
-            PlayTime pt = storage.getPlayTime(uuid, serverKey());
-            // Offline, so no live (now - last) addition - total is already
-            // the full checkpointed figure as of their last quit.
-            if (pt != null) playedSeconds = pt.total();
-        }
+        // Offline, so no live (now - last) addition - total is already
+        // the full checkpointed figure as of their last quit.
+        if (config.networkSyncEnabled() && stored.playTime() != null) playedSeconds = stored.playTime().total();
 
         return new OfflineProfile(gender, customScale, targetGrowthSeconds, playedSeconds);
     }

@@ -176,6 +176,34 @@ public final class SchemaMigrations {
                     for (List<String> more : rest) combined.addAll(more);
                     return combined;
                 }
+            },
+            /*
+             * Username lookups (GrowthEngine.loadPlayer's upsertUsername on every join, and
+             * findUuidByUsername) used LOWER(username) = LOWER(?), which can't use any index:
+             * a full table scan of the player table per join. They now compare "username = ?" directly,
+             * which is only equivalent if the column itself compares case-insensitively:
+             *  - H2: the column becomes VARCHAR_IGNORECASE (case-insensitive =, indexable);
+             *  - MySQL/MariaDB: the column is already utf8mb4_unicode_ci, but that is pinned here
+             *    explicitly in case a table predates that suffix.
+             * Both then get a plain (non-unique: legacy rows may hold case-variant duplicates) index.
+             * Every statement is safe to re-run (the runner tolerates MySQL's duplicate-index error).
+             */
+            new SchemaMigration() {
+                @Override public String targetVersion() { return "0.2.11"; }
+
+                @Override public List<String> statements(StorageType dialect, TableNames tables) {
+                    String playerTable = tables.player();
+                    return switch (dialect) {
+                        case H2 -> List.of(
+                                "ALTER TABLE " + playerTable + " ALTER COLUMN username VARCHAR_IGNORECASE(16)",
+                                "CREATE INDEX IF NOT EXISTS idx_" + playerTable + "_username ON " + playerTable + " (username)");
+                        case MYSQL, MARIADB -> List.of(
+                                "ALTER TABLE " + playerTable + " MODIFY COLUMN username VARCHAR(16) " +
+                                        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL",
+                                "CREATE INDEX idx_player_username ON " + playerTable + " (username)");
+                        case YAML -> List.of(); // no SQL schema to migrate
+                    };
+                }
             }
     );
 

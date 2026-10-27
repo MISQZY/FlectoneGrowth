@@ -17,6 +17,12 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !gradle/wrapper/gradle-wrapper.properties
 
+# Never commit binary jars (the build resolves everything from Maven; FlectonePulse's
+# API comes from Maven Central, see flectonePulseVersion in gradle.properties). A
+# leftover local FlectonePulse-*.jar in the repo root is unused by the build.
+# The wrapper jar above is re-included despite this.
+*.jar
+
 # IntelliJ IDEA
 .idea/
 *.iml

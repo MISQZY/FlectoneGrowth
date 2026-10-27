@@ -26,6 +26,16 @@ public final class UsernameCache {
         byLowerName.put(username.toLowerCase(Locale.ROOT), uuid);
     }
 
+    /** Whether {@code uuid} is already known (and still the owner of the name lookup) under exactly {@code username}. */
+    public boolean isCurrent(UUID uuid, String username) {
+        return username.equals(byUuid.get(uuid)) && uuid.equals(byLowerName.get(username.toLowerCase(Locale.ROOT)));
+    }
+
+    public void clear() {
+        byUuid.clear();
+        byLowerName.clear();
+    }
+
     public String get(UUID uuid) {
         return byUuid.get(uuid);
     }

@@ -28,6 +28,11 @@ public final class PlayTimeTracker {
         if (pt != null) profile.setPlayTime(pt.total(), pt.last(), pt.first(), pt.sessions());
     }
 
+    /** Upserts the DB row only (no re-read): for callers that already hold the previous row and can derive the new one - see {@code GrowthEngine#loadPlayer}. Returns whether the write succeeded. */
+    public boolean recordJoin(UUID uuid, String server, long now) {
+        return storage.recordJoin(uuid, server, now);
+    }
+
     /** Only for a genuine join: upserts the DB row for {@code server} (bumping sessions/last, or creating first=last=now/total=0/sessions=1 on a brand new player), then hydrates {@code profile} from the result. */
     public void recordJoin(PlayerProfile profile, String server) {
         long now = Instant.now().getEpochSecond();
