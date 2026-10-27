@@ -252,7 +252,7 @@ public final class Messages {
     // ---------------------------------------------------------------- pre-processor
 
     /** An opened generated tag: {@code kind} is primary/secondary/fcolor, {@code idx} the fcolor index (else -1), {@code close} its closing markup. */
-    private record Open(String kind, int idx, String close) {}
+    private record Open(String kind, int idx, String close, String fpart) {}
 
     private static final class Ctx {
         final Map<String, String> templates;
@@ -397,22 +397,30 @@ public final class Messages {
             String value = ctx.templates.get(name);
             if (value != null) return escapeLiteral(value, argTag != null, "hover".equals(argTag), quote);
         }
+        // FlectonePulse has no closer for its own fcolor tag: nothing of the kind may reach it, wherever it came from
+        if (ctx.dispatch && closing && name.equals("fcolor")) return "";
         if (!theme) return null;
 
         switch (name) {
             case "primary", "secondary" -> {
                 if (arg != null) return null;
                 if (closing) return closeOpen(ctx, name, -1);
-                String opening = asTag(name.equals("primary") ? primaryColor : secondaryColor);
-                ctx.stack.add(new Open(name, -1, closeFor(opening)));
+                String raw = asTag(name.equals("primary") ? primaryColor : secondaryColor);
+                if (ctx.dispatch) {
+                    // <fcolor:N> stays for FlectonePulse to resolve; only the other tags get a closer
+                    ctx.stack.add(new Open(name, -1, closeFor(raw), fcolorTags(raw)));
+                    return raw;
+                }
+                String opening = resolveFcolors(raw, ctx, false);
+                ctx.stack.add(new Open(name, -1, closeFor(opening), ""));
                 return opening;
             }
             case "fcolor" -> {
                 if (ctx.dispatch) return closing ? "" : null;
                 if (!closing) {
                     int idx = parseIndex(arg);
-                    String opening = idx < 0 ? "" : asTag(ctx.palette().get(idx));
-                    ctx.stack.add(new Open("fcolor", idx, closeFor(opening)));
+                    String opening = idx < 0 ? "" : paletteMarkup(ctx, idx);
+                    ctx.stack.add(new Open("fcolor", idx, closeFor(opening), ""));
                     return opening;
                 }
                 if (arg == null) return closeOpen(ctx, "fcolor", -1);
@@ -436,12 +444,70 @@ public final class Messages {
             Open o = stack.get(k);
             if (o.kind().equals(kind) && (idx < 0 || o.idx() == idx)) {
                 StringBuilder sb = new StringBuilder();
-                for (int j = stack.size() - 1; j >= k; j--) sb.append(stack.get(j).close());
+                boolean fcolorPopped = false;
+                for (int j = stack.size() - 1; j >= k; j--) {
+                    sb.append(stack.get(j).close());
+                    fcolorPopped |= !stack.get(j).fpart().isEmpty();
+                }
                 stack.subList(k, stack.size()).clear();
+                if (fcolorPopped) {
+                    // an fcolor can't be closed, only overridden: restore the nearest outer one still open
+                    for (int j = stack.size() - 1; j >= 0; j--) {
+                        if (!stack.get(j).fpart().isEmpty()) {
+                            sb.append(stack.get(j).fpart());
+                            break;
+                        }
+                    }
+                }
                 return sb.toString();
             }
         }
         return "";
+    }
+
+    /** Palette entry {@code idx} as opening markup; an entry that itself contains {@code <fcolor:N>} has those dropped (no recursion). */
+    private String paletteMarkup(Ctx ctx, int idx) {
+        return resolveFcolors(asTag(ctx.palette().get(idx)), null, true);
+    }
+
+    /** Replaces every {@code <fcolor:N>} in opening markup by its palette markup (or drops them when {@code strip}); everything else is kept. */
+    private String resolveFcolors(String markup, Ctx ctx, boolean strip) {
+        if (markup.indexOf('<') < 0) return markup;
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < markup.length()) {
+            int end = markup.charAt(i) == '<' ? findTagEnd(markup, i) : -1;
+            if (end < 0) {
+                sb.append(markup.charAt(i++));
+                continue;
+            }
+            String tag = markup.substring(i, end + 1);
+            String inner = tag.substring(1, tag.length() - 1);
+            int colon = inner.indexOf(':');
+            String name = (colon < 0 ? inner : inner.substring(0, colon)).trim().toLowerCase(Locale.ROOT);
+            if (name.equals("fcolor")) {
+                int idx = colon < 0 ? -1 : parseIndex(inner.substring(colon + 1).trim());
+                if (!strip && idx >= 0) sb.append(paletteMarkup(ctx, idx));
+            } else {
+                sb.append(tag);
+            }
+            i = end + 1;
+        }
+        return sb.toString();
+    }
+
+    /** Just the {@code <fcolor:N>} tags of opening markup. */
+    private static String fcolorTags(String markup) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < markup.length()) {
+            int end = markup.charAt(i) == '<' ? findTagEnd(markup, i) : -1;
+            if (end < 0) { i++; continue; }
+            String tag = markup.substring(i, end + 1);
+            if (tag.regionMatches(true, 1, "fcolor", 0, 6)) sb.append(tag);
+            i = end + 1;
+        }
+        return sb.toString();
     }
 
     private static int parseIndex(String arg) {
@@ -500,6 +566,7 @@ public final class Messages {
             if (end < 0) return "";
             String tag = v.substring(i, end + 1);
             if (tag.indexOf('§') >= 0) return "";
+            if (tag.length() > 2 && tag.charAt(1) == '/') { i = end + 1; continue; } // a theme value is an opener; closers are generated
             sb.append(tag);
             i = end + 1;
         }
@@ -595,7 +662,7 @@ public final class Messages {
             int colon = inner.indexOf(':');
             String name = (colon < 0 ? inner : inner.substring(0, colon)).trim();
             String lower = name.toLowerCase(Locale.ROOT);
-            if (!name.isEmpty() && name.charAt(0) != '!' && name.charAt(0) != '/' && !VOID.contains(lower)) {
+            if (!name.isEmpty() && name.charAt(0) != '!' && name.charAt(0) != '/' && !VOID.contains(lower) && !lower.equals("fcolor")) {
                 closers.add("</" + name + ">");
             }
             i = end + 1;
